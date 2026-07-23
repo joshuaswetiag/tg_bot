@@ -14,7 +14,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"ℹ️ **Help — {settings.bot_name}**\n\n"
         "**🛒 Buy Proxies** — Choose a pack and pay via bKash\n"
         "**📦 Custom Order** — Request a custom proxy package\n"
-        "**🔍 Proxy Checker** — Test if your proxies are working\n"
+        "**🔍 Proxy Checker** — Check up to 200 proxies; get live/dead `.txt` files\n"
         "**📋 My Orders** — View order history and delivered proxies\n"
         "**👤 My Profile** — Your account stats\n\n"
         "Payment: Send bKash to the number shown, then reply with your TRX ID.\n"

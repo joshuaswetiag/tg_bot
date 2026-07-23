@@ -50,3 +50,10 @@ def verify_channel_keyboard(channel: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("✅ I Joined", callback_data="verify_channel")],
         ]
     )
+
+
+BTN_CHECKER_CANCEL = "❌ Cancel Check"
+
+CHECKER_CANCEL_KEYBOARD = InlineKeyboardMarkup(
+    [[InlineKeyboardButton(BTN_CHECKER_CANCEL, callback_data="checker:cancel")]]
+)

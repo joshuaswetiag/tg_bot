@@ -32,6 +32,22 @@ class PostgresDatabase:
             with self._conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS proxy_checks (
+                            id SERIAL PRIMARY KEY,
+                            user_id BIGINT NOT NULL,
+                            proxy_count INTEGER NOT NULL,
+                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                        )
+                        """
+                    )
+                    cur.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_proxy_checks_user
+                        ON proxy_checks (user_id, created_at DESC)
+                        """
+                    )
+                    cur.execute(
                         "INSERT INTO settings (key, value) VALUES ('maintenance', '0') "
                         "ON CONFLICT (key) DO NOTHING"
                     )
@@ -324,3 +340,28 @@ class PostgresDatabase:
                     "total_orders": int(row["total_orders"]),
                     "total_proxies": int(row["total_proxies"]),
                 }
+
+    def count_proxy_checks_24h(self, user_id: int) -> int:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM proxy_checks
+                    WHERE user_id = %s
+                      AND created_at >= NOW() - INTERVAL '24 hours'
+                    """,
+                    (user_id,),
+                )
+                row = cur.fetchone()
+                return int(row[0])
+
+    def record_proxy_check(self, user_id: int, proxy_count: int) -> None:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO proxy_checks (user_id, proxy_count, created_at)
+                    VALUES (%s, %s, NOW())
+                    """,
+                    (user_id, proxy_count),
+                )

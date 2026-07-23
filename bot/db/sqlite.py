@@ -62,6 +62,16 @@ class SqliteDatabase:
                     added_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS proxy_checks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    proxy_count INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_proxy_checks_user
+                    ON proxy_checks (user_id, created_at);
+
                 INSERT OR IGNORE INTO settings (key, value) VALUES ('maintenance', '0');
                 """
             )
@@ -287,3 +297,25 @@ class SqliteDatabase:
                 "total_orders": int(row["total_orders"]),
                 "total_proxies": int(row["total_proxies"]),
             }
+
+    def count_proxy_checks_24h(self, user_id: int) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM proxy_checks
+                WHERE user_id = ?
+                  AND created_at >= datetime('now', '-24 hours')
+                """,
+                (user_id,),
+            ).fetchone()
+            return int(row["c"])
+
+    def record_proxy_check(self, user_id: int, proxy_count: int) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO proxy_checks (user_id, proxy_count, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (user_id, proxy_count, utcnow()),
+            )
