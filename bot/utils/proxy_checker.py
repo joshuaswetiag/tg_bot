@@ -1,7 +1,9 @@
 import asyncio
+import json
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import aiohttp
 
@@ -9,6 +11,12 @@ ProgressCallback = Callable[[int, int], Awaitable[None]]
 
 _PROXY_AT_RE = re.compile(
     r"^(?:(?P<user>[^:]+):(?P<pass>[^@]+)@)?(?P<host>[^:]+):(?P<port>\d+)$"
+)
+
+_CHECK_URLS = (
+    "http://ifconfig.me/ip",
+    "http://ip-api.com/json/?fields=query",
+    "http://httpbin.org/ip",
 )
 
 
@@ -20,7 +28,6 @@ class CheckResult:
 
 
 def normalize_proxy(line: str) -> str | None:
-    """Parse supported formats into user:pass@host:port or host:port."""
     line = line.strip()
     if not line or line.startswith("#"):
         return None
@@ -64,7 +71,86 @@ def parse_proxy(line: str) -> tuple[str, int, str | None, str | None] | None:
     )
 
 
-async def check_proxy(line: str, timeout: float = 8.0) -> CheckResult:
+def _proxy_url(scheme: str, host: str, port: int, user: str | None, password: str | None) -> str:
+    if user and password:
+        return f"{scheme}://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}"
+    return f"{scheme}://{host}:{port}"
+
+
+def _extract_ip(body: str, url: str) -> str:
+    body = body.strip()
+    if "ip-api.com" in url or "httpbin.org" in url:
+        try:
+            data = json.loads(body)
+            if "query" in data:
+                return str(data["query"])
+            if "origin" in data:
+                return str(data["origin"])
+        except json.JSONDecodeError:
+            pass
+    return body.split(",")[0].strip()[:64]
+
+
+async def _probe_urls(session: aiohttp.ClientSession, timeout: float) -> str | None:
+    for url in _CHECK_URLS:
+        try:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                if resp.status == 200:
+                    body = await resp.text()
+                    return _extract_ip(body, url)
+        except asyncio.TimeoutError:
+            continue
+        except Exception:
+            continue
+    return None
+
+
+async def _check_http_proxy(
+    host: str, port: int, user: str | None, password: str | None, timeout: float
+) -> str | None:
+    proxy = _proxy_url("http", host, port, user, password)
+    connector = aiohttp.TCPConnector(ssl=False, force_close=True)
+    try:
+        async with aiohttp.ClientSession(connector=connector) as session:
+            for url in _CHECK_URLS:
+                try:
+                    async with session.get(
+                        url,
+                        proxy=proxy,
+                        timeout=aiohttp.ClientTimeout(total=timeout),
+                    ) as resp:
+                        if resp.status == 200:
+                            body = await resp.text()
+                            ip = _extract_ip(body, url)
+                            return f"Live (HTTP) — IP: {ip}"
+                except (asyncio.TimeoutError, Exception):
+                    continue
+    finally:
+        await connector.close()
+    return None
+
+
+async def _check_socks5_proxy(
+    host: str, port: int, user: str | None, password: str | None, timeout: float
+) -> str | None:
+    try:
+        from aiohttp_socks import ProxyConnector
+    except ImportError:
+        return None
+
+    proxy = _proxy_url("socks5", host, port, user, password)
+    try:
+        connector = ProxyConnector.from_url(proxy, rdns=True)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            ip = await _probe_urls(session, timeout)
+            if ip:
+                return f"Live (SOCKS5) — IP: {ip}"
+    except Exception:
+        return None
+    return None
+
+
+async def check_proxy(line: str, timeout: float = 12.0) -> CheckResult:
     normalized = normalize_proxy(line)
     if not normalized:
         return CheckResult(line.strip(), False, "Invalid format")
@@ -75,31 +161,21 @@ async def check_proxy(line: str, timeout: float = 8.0) -> CheckResult:
 
     host, port, user, password = parsed
 
-    try:
-        auth = aiohttp.BasicAuth(user, password) if user and password else None
-        connector = aiohttp.TCPConnector(ssl=False, limit=0)
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.get(
-                "http://httpbin.org/ip",
-                proxy=f"http://{host}:{port}",
-                proxy_auth=auth,
-                timeout=aiohttp.ClientTimeout(total=timeout),
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    ip = data.get("origin", "unknown")
-                    return CheckResult(normalized, True, f"Online — IP: {ip}")
-                return CheckResult(normalized, False, f"HTTP {resp.status}")
-    except asyncio.TimeoutError:
-        return CheckResult(normalized, False, "Timeout")
-    except Exception as exc:
-        return CheckResult(normalized, False, str(exc)[:80])
+    http_detail = await _check_http_proxy(host, port, user, password, timeout)
+    if http_detail:
+        return CheckResult(normalized, True, http_detail)
+
+    socks_detail = await _check_socks5_proxy(host, port, user, password, timeout)
+    if socks_detail:
+        return CheckResult(normalized, True, socks_detail)
+
+    return CheckResult(normalized, False, "Dead — not responding as HTTP or SOCKS5 proxy")
 
 
 async def check_proxies(
     lines: list[str],
     *,
-    max_concurrent: int = 50,
+    max_concurrent: int = 30,
     on_progress: ProgressCallback | None = None,
 ) -> list[CheckResult]:
     proxies = parse_proxies_from_text("\n".join(lines))
