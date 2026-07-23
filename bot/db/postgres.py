@@ -1,8 +1,9 @@
+import os
 from contextlib import contextmanager
 from typing import Any
 
-import psycopg2
-import psycopg2.extras
+import psycopg
+from psycopg.rows import dict_row
 
 from bot.db.protocol import utcnow
 
@@ -16,7 +17,7 @@ class PostgresDatabase:
 
     @contextmanager
     def _conn(self):
-        conn = psycopg2.connect(self.database_url)
+        conn = psycopg.connect(self.database_url, row_factory=dict_row)
         try:
             yield conn
             conn.commit()
@@ -34,7 +35,7 @@ class PostgresDatabase:
                         "INSERT INTO settings (key, value) VALUES ('maintenance', '0') "
                         "ON CONFLICT (key) DO NOTHING"
                     )
-        except psycopg2.Error:
+        except psycopg.Error:
             raise RuntimeError(
                 "Could not connect to PostgreSQL. "
                 "Run supabase/schema.sql in Supabase SQL Editor first."
@@ -51,7 +52,7 @@ class PostgresDatabase:
 
     def get_setting(self, key: str, default: str = "") -> str:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
                 row = cur.fetchone()
                 return row["value"] if row else default
@@ -97,7 +98,7 @@ class PostgresDatabase:
 
     def is_user_verified(self, user_id: int) -> bool:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute(
                     "SELECT verified FROM users WHERE user_id = %s", (user_id,)
                 )
@@ -106,7 +107,7 @@ class PostgresDatabase:
 
     def get_user(self, user_id: int) -> dict[str, Any] | None:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
                 return self._row_to_dict(cur.fetchone())
 
@@ -129,7 +130,8 @@ class PostgresDatabase:
                     """,
                     (user_id, pack_id, pack_name, proxy_count, amount),
                 )
-                return int(cur.fetchone()[0])
+                row = cur.fetchone()
+                return int(row["id"])
 
     def set_order_trx(self, order_id: int, trx_id: str) -> None:
         with self._conn() as conn:
@@ -144,13 +146,13 @@ class PostgresDatabase:
 
     def get_order(self, order_id: int) -> dict[str, Any] | None:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
                 return self._row_to_dict(cur.fetchone())
 
     def get_user_orders(self, user_id: int, limit: int = 10) -> list[dict[str, Any]]:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT * FROM orders WHERE user_id = %s
@@ -162,7 +164,7 @@ class PostgresDatabase:
 
     def get_pending_orders(self) -> list[dict[str, Any]]:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT o.*, u.username, u.first_name
@@ -176,7 +178,7 @@ class PostgresDatabase:
 
     def approve_order(self, order_id: int, proxies: list[str]) -> bool:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT id, status, proxy_count FROM orders
@@ -256,7 +258,7 @@ class PostgresDatabase:
 
     def get_available_proxies(self, count: int) -> list[str]:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT proxy_line FROM proxy_stock
@@ -292,21 +294,22 @@ class PostgresDatabase:
         with self._conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) FROM proxy_stock WHERE used = FALSE"
+                    "SELECT COUNT(*) AS count FROM proxy_stock WHERE used = FALSE"
                 )
-                return int(cur.fetchone()[0])
+                row = cur.fetchone()
+                return int(row["count"])
 
     def trx_exists(self, trx_id: str) -> bool:
         with self._conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT 1 FROM orders WHERE trx_id = %s", (trx_id,)
+                    "SELECT 1 AS ok FROM orders WHERE trx_id = %s", (trx_id,)
                 )
                 return cur.fetchone() is not None
 
     def get_user_stats(self, user_id: int) -> dict[str, int]:
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT

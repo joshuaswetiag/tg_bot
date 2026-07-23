@@ -36,9 +36,33 @@ class Settings:
     db_path: str
 
 
+def _parse_admin_ids(raw: str) -> list[int]:
+    ids: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if part.startswith("@"):
+            raise ValueError(
+                f"ADMIN_IDS must be a numeric Telegram ID, not a username. "
+                f"You used '{part}'. Message @userinfobot on Telegram to get your ID."
+            )
+        try:
+            ids.append(int(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid ADMIN_IDS value '{part}'. "
+                "Use your numeric Telegram ID from @userinfobot (e.g. 123456789)."
+            ) from exc
+    if not ids:
+        raise ValueError(
+            "ADMIN_IDS is required in .env — your numeric Telegram ID from @userinfobot"
+        )
+    return ids
+
+
 def load_settings() -> Settings:
-    admin_raw = os.getenv("ADMIN_IDS", "")
-    admin_ids = [int(x.strip()) for x in admin_raw.split(",") if x.strip()]
+    admin_ids = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
 
     token = os.getenv("BOT_TOKEN", "")
     if not token:

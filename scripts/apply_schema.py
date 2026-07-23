@@ -18,21 +18,18 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        import psycopg2
+        import psycopg
     except ImportError:
-        print("Run: pip install psycopg2-binary")
+        print("Run: pip install psycopg[binary]")
         sys.exit(1)
 
     sql = SCHEMA.read_text(encoding="utf-8")
     print(f"Applying schema from {SCHEMA} ...")
-    conn = psycopg2.connect(url)
-    try:
+    with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
             cur.execute(sql)
         conn.commit()
-        print("Schema applied successfully.")
-    finally:
-        conn.close()
+    print("Schema applied successfully.")
 
 
 if __name__ == "__main__":
