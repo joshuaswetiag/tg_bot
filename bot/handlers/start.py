@@ -29,7 +29,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     await update.message.reply_text(
         f"👋 Welcome to **{settings.bot_name}**!\n\n"
-        "Use the menu below to browse proxy packs, check orders, or get help.",
+        "Use the menu below to browse proxy account packs, check orders, or get help.",
         reply_markup=MAIN_KEYBOARD,
         parse_mode="Markdown",
     )

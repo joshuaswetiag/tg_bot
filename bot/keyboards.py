@@ -3,7 +3,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton,
 from bot.config import PROXY_PACKS
 
 # Reply keyboard labels
-BTN_BUY = "🛒 Buy Proxies"
+BTN_BUY = "🛒 Buy Proxy Accounts"
 BTN_CUSTOM = "📦 Custom Order"
 BTN_CHECKER = "🔍 Proxy Checker"
 BTN_ORDERS = "📋 My Orders"
@@ -25,7 +25,10 @@ def pack_selection_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for p in PROXY_PACKS:
         prefix = "🧪 " if p.id == "test" else "📦 "
-        label = f"{prefix}{p.name} — {p.count} proxy{'ies' if p.count != 1 else ''} @ ৳{int(p.price)}"
+        label = (
+            f"{prefix}{p.name} — {p.count} account{'s' if p.count != 1 else ''} "
+            f"@ ৳{int(p.price)}"
+        )
         buttons.append([InlineKeyboardButton(label, callback_data=f"pack:{p.id}")])
     buttons.append([InlineKeyboardButton("❌ Cancel", callback_data="pack:cancel")])
     return InlineKeyboardMarkup(buttons)
@@ -87,7 +90,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📦 Stock", callback_data=ADMIN_STOCK),
             ],
             [
-                InlineKeyboardButton("➕ Add Proxies", callback_data=ADMIN_ADD_PROXIES),
+                InlineKeyboardButton("➕ Add Accounts", callback_data=ADMIN_ADD_PROXIES),
                 InlineKeyboardButton("🔄 Refresh", callback_data=ADMIN_REFRESH),
             ],
             [InlineKeyboardButton("❌ Close", callback_data=ADMIN_CANCEL)],

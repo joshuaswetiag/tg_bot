@@ -27,9 +27,9 @@ async def my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"**Username:** @{user.username or '—'}\n"
         f"**Telegram ID:** `{user.id}`\n"
         f"**Total orders:** {stats['total_orders']}\n"
-        f"**Proxies purchased:** {stats['total_proxies']}\n"
+        f"**Accounts purchased:** {stats['total_proxies']}\n"
         f"**Store:** {settings.bot_name}\n"
-        f"**Stock available:** {stock} proxies",
+        f"**Accounts in stock:** {stock}",
         parse_mode="Markdown",
         reply_markup=MAIN_KEYBOARD,
     )

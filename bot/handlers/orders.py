@@ -2,8 +2,9 @@ from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, filters
 
 from bot.database import Database
-from bot.keyboards import BTN_ORDERS, MAIN_KEYBOARD, MAIN_KEYBOARD
+from bot.keyboards import BTN_ORDERS, MAIN_KEYBOARD
 from bot.utils.access import ensure_access
+from bot.utils.account_stock import account_count_label, format_accounts_delivery_file
 from bot.utils.user_state import clear_input_modes
 
 STATUS_LABELS = {
@@ -37,10 +38,13 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         status = STATUS_LABELS.get(order["status"], order["status"])
         lines.append(
             f"**#{order['id']}** — {order['pack_name']}\n"
-            f"{order['proxy_count']} proxies · ৳{order['amount']:.0f} · {status}"
+            f"{account_count_label(int(order['proxy_count']))} · "
+            f"৳{order['amount']:.0f} · {status}"
         )
         if order["status"] == "completed" and order["proxies"]:
-            lines.append(f"```\n{order['proxies']}\n```")
+            delivered = format_accounts_delivery_file(order["proxies"].splitlines())
+            if delivered.strip():
+                lines.append(f"```\n{delivered.strip()}\n```")
 
     await update.message.reply_text(
         "\n".join(lines), parse_mode="Markdown", reply_markup=MAIN_KEYBOARD

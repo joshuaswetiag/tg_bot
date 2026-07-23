@@ -15,7 +15,7 @@ MAINTENANCE_NOTICE = (
 
 BACK_ONLINE_NOTICE = (
     "<b>🎉 The bot is back online!</b>\n\n"
-    "Maintenance is complete, and you can now purchase proxies.\n\n"
+    "Maintenance is complete, and you can now purchase proxy accounts.\n\n"
     "Use the menu below to get started."
 )
 

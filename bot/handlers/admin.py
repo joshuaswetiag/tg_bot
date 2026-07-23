@@ -10,6 +10,12 @@ from bot.keyboards import (
     admin_panel_keyboard,
     order_admin_keyboard,
 )
+from bot.utils.account_stock import (
+    account_count_label,
+    format_accounts_delivery_file,
+    parse_accounts_from_text,
+    parse_accounts_upload,
+)
 from bot.utils.broadcast import (
     BACK_ONLINE_NOTICE,
     MAINTENANCE_NOTICE,
@@ -44,7 +50,7 @@ def _admin_panel_text(db: Database) -> str:
     return (
         "<b>🛠 Admin Panel</b>\n\n"
         f"Maintenance: <b>{'ON ⚠️' if maintenance else 'OFF ✅'}</b>\n"
-        f"Proxy stock: <b>{stock}</b>\n"
+        f"Account stock: <b>{stock}</b>\n"
         f"Pending orders: <b>{pending}</b>\n\n"
         "Use the buttons below to manage the bot."
     )
@@ -194,7 +200,9 @@ async def show_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not update.message or not _is_admin(update, context):
         return
     db: Database = context.bot_data["db"]
-    await update.message.reply_text(f"📦 Available proxies: {db.count_available_proxies()}")
+    await update.message.reply_text(
+        f"📦 Available accounts: {db.count_available_proxies()}"
+    )
 
 
 async def _send_pending_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -213,7 +221,7 @@ async def _send_pending_orders(update: Update, context: ContextTypes.DEFAULT_TYP
         text = (
             f"Order #{order['id']}\n"
             f"User: {order['first_name']} (@{order['username'] or 'n/a'}) `{order['user_id']}`\n"
-            f"Pack: {order['pack_name']} ({order['proxy_count']} proxies)\n"
+            f"Pack: {order['pack_name']} ({account_count_label(int(order['proxy_count']))})\n"
             f"Amount: ৳{order['amount']:.1f}\n"
             f"TRX: `{order['trx_id']}`"
         )
@@ -231,44 +239,98 @@ async def show_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _send_pending_orders(update, context)
 
 
+ADD_ACCOUNTS_HELP = (
+    "➕ <b>Add Proxy Accounts</b>\n\n"
+    "Upload an <code>.xlsx</code> file or send accounts as text.\n\n"
+    "<b>Excel format:</b>\n"
+    "• Column B = email\n"
+    "• Column C = password\n\n"
+    "<b>Text format:</b>\n"
+    "• One <code>email:password</code> per line\n\n"
+    "You can also use <code>/add_accounts</code>."
+)
+
+
+async def _download_document_bytes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[str, bytes] | None:
+    message = update.message
+    if not message or not message.document:
+        return None
+    doc = message.document
+    if doc.file_size and doc.file_size > 2_000_000:
+        await message.reply_text("File too large. Max size is 2 MB.")
+        return None
+    filename = doc.file_name or "upload.txt"
+    file = await context.bot.get_file(doc.file_id)
+    data = await file.download_as_bytearray()
+    return filename, bytes(data)
+
+
+async def _add_accounts(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, accounts: list[str]
+) -> None:
+    if not accounts:
+        msg = update.effective_message
+        if msg:
+            await msg.reply_text(
+                "No valid accounts found.\n\n"
+                "Excel: column B = email, column C = password\n"
+                "Text: one <code>email:password</code> per line",
+                parse_mode="HTML",
+            )
+        return
+
+    db: Database = context.bot_data["db"]
+    added = db.add_proxies(accounts)
+    clear_admin_modes(context)
+
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(
+            f"✅ Added {added} account(s).\n"
+            f"Total stock: {db.count_available_proxies()}"
+        )
+
+
 async def add_proxies_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
 
+    reply = update.message.reply_to_message
+    if reply and reply.document:
+        doc = reply.document
+        if doc.file_size and doc.file_size > 2_000_000:
+            await update.message.reply_text("File too large. Max size is 2 MB.")
+            return
+        file = await context.bot.get_file(doc.file_id)
+        data = await file.download_as_bytearray()
+        accounts = parse_accounts_upload(doc.file_name or "upload.xlsx", bytes(data))
+        await _add_accounts(update, context, accounts)
+        return
+
+    if update.message.document:
+        downloaded = await _download_document_bytes(update, context)
+        if downloaded:
+            filename, data = downloaded
+            accounts = parse_accounts_upload(filename, data)
+            await _add_accounts(update, context, accounts)
+        return
+
     text = ""
-    if update.message.reply_to_message and update.message.reply_to_message.text:
-        text = update.message.reply_to_message.text
+    if reply and reply.text:
+        text = reply.text
     elif context.args:
         text = " ".join(context.args)
 
     if not text:
         context.user_data[WAITING_ADMIN_PROXIES] = True
         await update.message.reply_text(
-            "➕ <b>Add Proxies</b>\n\n"
-            "Send a proxy list (one per line) or upload a <code>.txt</code> file.\n\n"
-            "You can also reply to a proxy message with <code>/add_proxies</code>.",
+            ADD_ACCOUNTS_HELP,
             parse_mode="HTML",
             reply_markup=ADMIN_CANCEL_KEYBOARD,
         )
         return
 
-    await _add_proxies_from_text(update, context, text)
-
-
-async def _add_proxies_from_text(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
-) -> None:
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    db: Database = context.bot_data["db"]
-    added = db.add_proxies(lines)
-    clear_admin_modes(context)
-
-    msg = update.effective_message
-    if msg:
-        await msg.reply_text(
-            f"✅ Added {added} proxy(s).\n"
-            f"Total stock: {db.count_available_proxies()}"
-        )
+    await _add_accounts(update, context, parse_accounts_from_text(text))
 
 
 async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -328,7 +390,7 @@ async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if action == "stock":
         db: Database = context.bot_data["db"]
         await query.message.reply_text(
-            f"📦 Available proxies: {db.count_available_proxies()}"
+            f"📦 Available accounts: {db.count_available_proxies()}"
         )
         return
 
@@ -340,8 +402,7 @@ async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         clear_admin_modes(context)
         context.user_data[WAITING_ADMIN_PROXIES] = True
         await query.message.reply_text(
-            "➕ <b>Add Proxies</b>\n\n"
-            "Send a proxy list (one per line) or upload a <code>.txt</code> file.",
+            ADD_ACCOUNTS_HELP,
             parse_mode="HTML",
             reply_markup=ADMIN_CANCEL_KEYBOARD,
         )
@@ -385,24 +446,21 @@ async def receive_admin_proxies(update: Update, context: ContextTypes.DEFAULT_TY
     if not context.user_data.get(WAITING_ADMIN_PROXIES):
         return
 
-    text = ""
     if update.message.document:
-        doc = update.message.document
-        if doc.file_size and doc.file_size > 512_000:
-            await update.message.reply_text("File too large. Max size is 512 KB.")
+        downloaded = await _download_document_bytes(update, context)
+        if not downloaded:
             return
-        file = await context.bot.get_file(doc.file_id)
-        data = await file.download_as_bytearray()
-        text = data.decode("utf-8", errors="ignore")
-    elif update.message.text:
+        filename, data = downloaded
+        accounts = parse_accounts_upload(filename, data)
+        await _add_accounts(update, context, accounts)
+        return
+
+    if update.message.text:
         text = update.message.text
         if is_menu_button(text):
             clear_admin_modes(context)
             return
-    else:
-        return
-
-    await _add_proxies_from_text(update, context, text)
+        await _add_accounts(update, context, parse_accounts_from_text(text))
 
 
 async def admin_order_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -444,7 +502,7 @@ async def admin_order_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         if db.approve_order(order_id, proxies):
-            proxy_block = "\n".join(proxies)
+            proxy_block = format_accounts_delivery_file(proxies)
             await query.edit_message_text(f"✅ Order #{order_id} approved.")
             try:
                 proxy_count = int(order["proxy_count"])
@@ -478,6 +536,7 @@ def register_admin_handlers(application) -> None:
     application.add_handler(CommandHandler("stock", show_stock))
     application.add_handler(CommandHandler("pending", show_pending))
     application.add_handler(CommandHandler("add_proxies", add_proxies_command))
+    application.add_handler(CommandHandler("add_accounts", add_proxies_command))
     application.add_handler(CallbackQueryHandler(admin_panel_action, pattern=r"^adminpanel:"))
     application.add_handler(CallbackQueryHandler(admin_order_action, pattern=r"^admin:"))
     application.add_handler(

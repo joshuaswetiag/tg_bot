@@ -17,12 +17,12 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         support = f"@{support}"
 
     await update.message.reply_text(
-        "❓ **How to buy proxies:**\n\n"
-        "1️⃣ Tap **Buy Proxies** or **Custom Order**\n"
+        "❓ **How to buy proxy accounts:**\n\n"
+        "1️⃣ Tap **Buy Proxy Accounts** or **Custom Order**\n"
         "2️⃣ Choose a pack or enter your desired quantity\n"
         "3️⃣ Select payment method (**bKash** / **Nagad**)\n"
         "4️⃣ Send payment & enter your **TRX ID**\n"
-        "5️⃣ Admin verifies & proxies are delivered as a **TXT file**\n\n"
+        "5️⃣ Admin verifies & accounts (email + password) are delivered as a **TXT file**\n\n"
         "⏱️ **Processing:** Usually within 1–2 hours\n"
         "📋 Orders expire after **24 hours** if not approved\n\n"
         f"🆘 **Support:** {support}",

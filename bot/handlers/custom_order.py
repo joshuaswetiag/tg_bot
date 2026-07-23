@@ -10,10 +10,10 @@ from bot.utils.user_state import WAITING_CUSTOM_QTY, clear_input_modes, is_menu_
 
 CUSTOM_ORDER_INTRO = (
     "📦 **Custom Order**\n\n"
-    "💡 Enter the number of proxies you need:\n"
+    "💡 Enter the number of proxy accounts you need:\n"
     f"• Minimum: {CUSTOM_ORDER_MIN:,}\n"
     f"• Maximum: {CUSTOM_ORDER_MAX:,}\n"
-    f"• Price: ৳{CUSTOM_PRICE_PER_PROXY:.0f}/proxy\n\n"
+    f"• Price: ৳{CUSTOM_PRICE_PER_PROXY:.0f}/account\n\n"
     "Type the quantity (numbers only):"
 )
 
@@ -72,7 +72,7 @@ async def receive_custom_quantity(update: Update, context: ContextTypes.DEFAULT_
 
     context.user_data.pop(WAITING_CUSTOM_QTY, None)
     amount = quantity * CUSTOM_PRICE_PER_PROXY
-    pack_name = f"Custom Order ({quantity:,} proxies)"
+    pack_name = f"Custom Order ({quantity:,} accounts)"
     order_id = db.create_order(user.id, "custom", pack_name, quantity, amount)
     await _prompt_payment_method(update, context, order_id, amount, quantity)
 

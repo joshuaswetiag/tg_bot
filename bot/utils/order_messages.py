@@ -1,4 +1,5 @@
 from bot.config import Settings
+from bot.utils.account_stock import account_count_label
 
 
 def format_payment_method(method: str) -> str:
@@ -31,7 +32,7 @@ def payment_instructions(
 def payment_method_prompt(amount: float, proxy_count: int) -> str:
     return (
         "<b>💳 Select Payment Method</b>\n\n"
-        f"📦 <b>{proxy_count}</b> proxies — <b>৳{amount:.1f}</b>\n\n"
+        f"📦 <b>{account_count_label(proxy_count)}</b> — <b>৳{amount:.1f}</b>\n\n"
         "Choose bKash or Nagad:"
     )
 
@@ -49,7 +50,7 @@ def order_submitted(
         "<b>✅ Order Submitted!</b>\n\n"
         f"🆔 Order ID: <code>#{order_id}</code>\n"
         f"📦 Pack: {pack_name}\n"
-        f"🌐 Quantity: {proxy_count} proxies\n"
+        f"🌐 Quantity: {account_count_label(proxy_count)}\n"
         f"💵 Amount: ৳{amount:.1f}\n"
         f"💳 Method: {format_payment_method(payment_method)}\n"
         f"🏷 TRX ID: <code>{trx_id}</code>\n\n"
@@ -62,14 +63,14 @@ def order_delivered(*, order_id: int, proxy_count: int) -> str:
     return (
         f"<b>🎉 Order #{order_id} Delivered!</b>\n\n"
         "✅ Your payment was approved.\n"
-        f"📦 {proxy_count} proxies are attached below.\n\n"
+        f"📧 {account_count_label(proxy_count)} (email + password) attached below.\n\n"
         "Thank you for your purchase! 🙏"
     )
 
 
 def order_proxy_filename(order_id: int) -> str:
-    return f"proxies_order_{order_id}.txt"
+    return f"accounts_order_{order_id}.txt"
 
 
 def order_proxy_caption(*, order_id: int, proxy_count: int) -> str:
-    return f"📦 {proxy_count} proxies — Order #{order_id}"
+    return f"📧 {account_count_label(proxy_count)} — Order #{order_id}"

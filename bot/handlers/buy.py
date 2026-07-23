@@ -11,6 +11,7 @@ from bot.utils.payment import (
     payment_method_keyboard,
     payment_method_prompt,
 )
+from bot.utils.account_stock import account_count_label
 from bot.utils.user_state import WAITING_TRX, clear_input_modes, is_menu_button
 
 
@@ -62,7 +63,7 @@ async def _start_pack_order(
         if msg:
             await msg.reply_text(
                 f"⚠️ Not enough stock. Need {pack.count}, have {available}.\n"
-                "Ask admin to add proxies with /add_proxies"
+                "Ask admin to add accounts from Excel or /add_accounts"
             )
         return
 
@@ -78,8 +79,8 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     clear_input_modes(context)
     await update.message.reply_text(
-        "📦 <b>Choose a Proxy Pack:</b>\n\n"
-        "🧪 <b>Test Pack</b> — 1 proxy @ ৳10 (for testing)\n\n"
+        "📦 <b>Choose a Proxy Account Pack:</b>\n\n"
+        "🧪 <b>Test Pack</b> — 1 account @ ৳10 (for testing)\n\n"
         "All prices in BDT (Bangladeshi Taka).",
         reply_markup=MAIN_KEYBOARD,
         parse_mode="HTML",
@@ -217,7 +218,9 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     order_id = context.user_data.get("active_order_id")
     if not order_id:
-        await update.message.reply_text("No active order. Tap 🛒 Buy Proxies to start.")
+        await update.message.reply_text(
+            "No active order. Tap 🛒 Buy Proxy Accounts to start."
+        )
         context.user_data.pop(WAITING_TRX, None)
         return
 
@@ -254,7 +257,7 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         f"🆕 **New Payment**\n\n"
         f"Order: #{order_id}\n"
         f"User: {user.first_name} (@{user.username or 'n/a'}) `{user.id}`\n"
-        f"Pack: {order['pack_name']} ({order['proxy_count']} proxies)\n"
+        f"Pack: {order['pack_name']} ({account_count_label(int(order['proxy_count']))})\n"
         f"Amount: ৳{order['amount']:.1f}\n"
         f"Method: {payment_method.upper()}\n"
         f"TRX ID: `{trx_id}`"
