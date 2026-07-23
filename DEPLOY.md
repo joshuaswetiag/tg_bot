@@ -1,45 +1,47 @@
 # Proxy Store Bot — 24/7 Deploy Guide
 
+> **Your Supabase project is ready:** [proxy-store-bot dashboard](https://supabase.com/dashboard/project/yrmpstkasqmwrndqlifj)  
+> Database tables are already created. Credentials are in `SETUP_CREDENTIALS.local.txt` (local only).
+
 ## What you need ready
 
-1. **Bot token** from [@BotFather](https://t.me/BotFather)
+1. **Bot token** from [@BotFather](https://t.me/BotFather) — see **Step 0** below
 2. **Your Telegram ID** from [@userinfobot](https://t.me/userinfobot)
-3. **Supabase account** (you already have one)
-4. **GitHub account** + **Railway account** ([railway.app](https://railway.app))
+3. **GitHub account** + **Railway account** ([railway.app](https://railway.app))
 
 ---
 
-## Part 1 — Supabase (database)
+## Step 0 — Create your Telegram bot (2 min)
 
-### 1. Create or pick a project
+1. Open Telegram → search **@BotFather**
+2. Send `/newbot`
+3. Choose a **display name** (e.g. `My Proxy Store`)
+4. Choose a **username** ending in `bot` (e.g. `myproxystore_bot`)
+5. Copy the **token** BotFather gives you
+6. Edit `h:\tg_bot\.env`:
+   ```
+   BOT_TOKEN=paste_token_here
+   ADMIN_IDS=your_numeric_id
+   ```
 
-- Go to [supabase.com/dashboard](https://supabase.com/dashboard)
-- **New project** → name it `proxy-store-bot` → region **Singapore** (closest to BD)
-- Wait ~2 minutes for it to finish provisioning
+7. Test locally:
+   ```powershell
+   cd h:\tg_bot
+   pip install -r requirements.txt
+   python run.py
+   ```
+8. Message your bot → `/start`
 
-### 2. Run the database schema
+---
 
-- Open your project → **SQL Editor** → **New query**
-- Copy all of `supabase/schema.sql` and click **Run**
-- You should see “Success”
+## Part 1 — Supabase (database) ✅ DONE
 
-### 3. Get DATABASE_URL
+Your project **proxy-store-bot** (Singapore) is created and schema is applied.
 
-- **Project Settings** → **Database** → **Connection string** → **URI**
-- Copy the URI and replace `[YOUR-PASSWORD]` with your database password
+- Dashboard: https://supabase.com/dashboard/project/yrmpstkasqmwrndqlifj
+- `DATABASE_URL` is already in your `.env` file
 
-Example:
-```
-postgresql://postgres.xxxx:YOUR_PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
-```
-
-### 4. (Optional) Apply schema from terminal
-
-```powershell
-cd h:\tg_bot
-$env:DATABASE_URL = "postgresql://postgres...."
-python scripts/apply_schema.py
-```
+To view data: Supabase → **Table Editor** → `proxy_stock`, `orders`, `users`
 
 ---
 

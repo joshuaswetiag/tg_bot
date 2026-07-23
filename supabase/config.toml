@@ -1,5 +1,4 @@
-# Supabase local config (linked project ref set after `supabase link`)
-project_id = ""
+project_id = "yrmpstkasqmwrndqlifj"
 
 [api]
 enabled = true
@@ -7,7 +6,7 @@ port = 54321
 
 [db]
 port = 54322
-major_version = 15
+major_version = 17
 
 [studio]
 enabled = true
