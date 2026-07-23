@@ -192,14 +192,12 @@ def _is_proxy_check_input(update: Update) -> bool:
     return False
 
 
-def _waiting_proxy_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    if not context.user_data.get(WAITING_PROXY_CHECK):
-        return False
-    return _is_proxy_check_input(update)
-
-
 async def receive_proxies_to_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.user_data.get(WAITING_PROXY_CHECK):
+        return
     if not update.message or not await ensure_access(update, context):
+        return
+    if not _is_proxy_check_input(update):
         return
 
     raw = await _extract_proxy_text(update, context)
@@ -213,7 +211,7 @@ def register_checker_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(checker_cancel, pattern=r"^checker:cancel$"))
     application.add_handler(
         MessageHandler(
-            filters.create(_waiting_proxy_input) & ~filters.COMMAND,
+            (filters.TEXT | filters.Document.ALL) & ~filters.COMMAND,
             receive_proxies_to_check,
         ),
         group=2,
