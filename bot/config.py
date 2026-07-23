@@ -24,6 +24,10 @@ PROXY_PACKS: list[ProxyPack] = [
 
 PACK_BY_ID = {p.id: p for p in PROXY_PACKS}
 
+CUSTOM_ORDER_MIN = 50
+CUSTOM_ORDER_MAX = 5000
+CUSTOM_PRICE_PER_PROXY = 2.0
+
 
 @dataclass
 class Settings:
@@ -32,6 +36,9 @@ class Settings:
     required_channel: str
     bkash_number: str
     bkash_type: str
+    nagad_number: str
+    nagad_type: str
+    support_username: str
     bot_name: str
     database_url: str
     db_path: str
@@ -75,6 +82,9 @@ def load_settings() -> Settings:
         required_channel=os.getenv("REQUIRED_CHANNEL", ""),
         bkash_number=os.getenv("BKASH_NUMBER", "01845007133"),
         bkash_type=os.getenv("BKASH_TYPE", "Personal"),
+        nagad_number=os.getenv("NAGAD_NUMBER", "01845007133"),
+        nagad_type=os.getenv("NAGAD_TYPE", "Personal"),
+        support_username=os.getenv("SUPPORT_USERNAME", "@Noyon001"),
         bot_name=os.getenv("BOT_NAME", "Proxy Store"),
         database_url=os.getenv("DATABASE_URL", ""),
         db_path=os.getenv("DB_PATH", "data/bot.db"),

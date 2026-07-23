@@ -5,8 +5,40 @@ from bot.config import PACK_BY_ID
 from bot.database import Database
 from bot.keyboards import BTN_BUY, pack_selection_keyboard
 from bot.utils.access import ensure_access
+from bot.utils.payment import (
+    payment_instructions,
+    payment_method_keyboard,
+    payment_method_prompt,
+)
 
 WAITING_TRX = "waiting_trx"
+
+
+async def _prompt_payment_method(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    order_id: int,
+    amount: float,
+    proxy_count: int,
+    *,
+    edit: bool = False,
+) -> None:
+    context.user_data["active_order_id"] = order_id
+    context.user_data.pop(WAITING_TRX, None)
+    context.user_data.pop("payment_method", None)
+
+    text = payment_method_prompt(amount, proxy_count)
+    markup = payment_method_keyboard(order_id)
+
+    if edit and update.callback_query:
+        await update.callback_query.edit_message_text(
+            text, reply_markup=markup, parse_mode="Markdown"
+        )
+        return
+
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(text, reply_markup=markup, parse_mode="Markdown")
 
 
 async def _start_pack_order(
@@ -20,7 +52,6 @@ async def _start_pack_order(
         return
 
     db: Database = context.bot_data["db"]
-    settings = context.bot_data["settings"]
     user = update.effective_user
     if not user:
         return
@@ -36,21 +67,9 @@ async def _start_pack_order(
         return
 
     order_id = db.create_order(user.id, pack.id, pack.name, pack.count, pack.price)
-    context.user_data["active_order_id"] = order_id
-    context.user_data[WAITING_TRX] = True
-
-    msg = update.effective_message
-    if msg:
-        await msg.reply_text(
-            f"💳 **bKash Payment**\n\n"
-            f"Send **৳{pack.price:.1f}** to:\n"
-            f"**Number:** `{settings.bkash_number}`\n"
-            f"**Account Type:** {settings.bkash_type}\n\n"
-            f"Send money → Personal → Enter amount → "
-            f"Use reference: your Telegram ID (`{user.id}`)\n\n"
-            f"✅ After sending, reply with your **Transaction ID (TRX ID):**",
-            parse_mode="Markdown",
-        )
+    await _prompt_payment_method(
+        update, context, order_id, pack.price, pack.count
+    )
 
 
 async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -67,7 +86,6 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def test_buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Quick test: buy 1 proxy without opening the full pack menu."""
     if not update.message or not await ensure_access(update, context):
         return
     await _start_pack_order(update, context, "test")
@@ -95,7 +113,6 @@ async def pack_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     db: Database = context.bot_data["db"]
-    settings = context.bot_data["settings"]
     user = update.effective_user
     if not user:
         return
@@ -109,17 +126,59 @@ async def pack_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     order_id = db.create_order(user.id, pack.id, pack.name, pack.count, pack.price)
+    await _prompt_payment_method(
+        update, context, order_id, pack.price, pack.count, edit=True
+    )
+
+
+async def payment_method_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data:
+        return
+    await query.answer()
+
+    if not await ensure_access(update, context):
+        return
+
+    parts = query.data.split(":")
+    if len(parts) != 3:
+        return
+
+    method, order_id_str = parts[1], parts[2]
+    order_id = int(order_id_str)
+    db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
+    user = update.effective_user
+    if not user:
+        return
+
+    order = db.get_order(order_id)
+    if not order or order["user_id"] != user.id:
+        await query.edit_message_text("Order not found.")
+        return
+
+    if method == "cancel":
+        db.cancel_order(order_id, user.id)
+        context.user_data.pop("active_order_id", None)
+        context.user_data.pop(WAITING_TRX, None)
+        await query.edit_message_text("❌ Order cancelled.")
+        return
+
+    if method not in ("bkash", "nagad"):
+        return
+
     context.user_data["active_order_id"] = order_id
     context.user_data[WAITING_TRX] = True
+    context.user_data["payment_method"] = method
 
     await query.edit_message_text(
-        f"💳 **bKash Payment**\n\n"
-        f"Send **৳{pack.price:.1f}** to:\n"
-        f"**Number:** `{settings.bkash_number}`\n"
-        f"**Account Type:** {settings.bkash_type}\n\n"
-        f"Send money → Personal → Enter amount → "
-        f"Use reference: your Telegram ID (`{user.id}`)\n\n"
-        f"✅ After sending, reply with your **Transaction ID (TRX ID):**",
+        payment_instructions(
+            method,
+            float(order["amount"]),
+            settings,
+            user.id,
+            int(order["proxy_count"]),
+        ),
         parse_mode="Markdown",
     )
 
@@ -160,13 +219,15 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     db.set_order_trx(order_id, trx_id)
+    payment_method = context.user_data.pop("payment_method", "bkash")
     context.user_data.pop(WAITING_TRX, None)
     context.user_data.pop("active_order_id", None)
 
     await update.message.reply_text(
         "✅ **Payment submitted!**\n\n"
         f"Order #{order_id} is pending admin review.\n"
-        "You'll receive your proxies once approved.",
+        "You'll receive your proxies once approved.\n\n"
+        "⏱️ Processing: Usually within 1–2 hours",
         parse_mode="Markdown",
     )
 
@@ -178,6 +239,7 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         f"User: {user.first_name} (@{user.username or 'n/a'}) `{user.id}`\n"
         f"Pack: {order['pack_name']} ({order['proxy_count']} proxies)\n"
         f"Amount: ৳{order['amount']:.1f}\n"
+        f"Method: {payment_method.upper()}\n"
         f"TRX ID: `{trx_id}`"
     )
     for admin_id in settings.admin_ids:
@@ -196,6 +258,7 @@ def register_buy_handlers(application) -> None:
     application.add_handler(CommandHandler("testbuy", test_buy_command))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_BUY}$"), buy_proxies))
     application.add_handler(CallbackQueryHandler(pack_selected, pattern=r"^pack:"))
+    application.add_handler(CallbackQueryHandler(payment_method_selected, pattern=r"^pay:"))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, receive_trx_id),
         group=1,

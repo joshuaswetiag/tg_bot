@@ -1,4 +1,6 @@
-from telegram import Update
+import io
+
+from telegram import InputFile, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.database import Database
@@ -153,9 +155,16 @@ async def admin_order_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await context.bot.send_message(
                     order["user_id"],
                     f"✅ **Order #{order_id} completed!**\n\n"
-                    f"Your {order['proxy_count']} proxies:\n\n"
-                    f"```\n{proxy_block}\n```",
+                    f"Your **{order['proxy_count']}** proxies are attached as a TXT file.",
                     parse_mode="Markdown",
+                )
+                await context.bot.send_document(
+                    order["user_id"],
+                    InputFile(
+                        io.BytesIO(proxy_block.encode("utf-8")),
+                        filename=f"order_{order_id}_proxies.txt",
+                    ),
+                    caption=f"Order #{order_id} — {order['proxy_count']} proxies",
                 )
             except Exception:
                 pass

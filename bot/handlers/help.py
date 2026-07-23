@@ -10,15 +10,20 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     settings = context.bot_data["settings"]
+    support = settings.support_username
+    if not support.startswith("@"):
+        support = f"@{support}"
+
     await update.message.reply_text(
-        f"ℹ️ **Help — {settings.bot_name}**\n\n"
-        "**🛒 Buy Proxies** — Choose a pack and pay via bKash\n"
-        "**📦 Custom Order** — Request a custom proxy package\n"
-        "**🔍 Proxy Checker** — Check up to 200 proxies; get live/dead `.txt` files\n"
-        "**📋 My Orders** — View order history and delivered proxies\n"
-        "**👤 My Profile** — Your account stats\n\n"
-        "Payment: Send bKash to the number shown, then reply with your TRX ID.\n"
-        "Use your Telegram ID as the payment reference.",
+        "❓ **How to buy proxies:**\n\n"
+        "1️⃣ Tap **Buy Proxies** or **Custom Order**\n"
+        "2️⃣ Choose a pack or enter your desired quantity\n"
+        "3️⃣ Select payment method (**bKash** / **Nagad**)\n"
+        "4️⃣ Send payment & enter your **TRX ID**\n"
+        "5️⃣ Admin verifies & proxies are delivered as a **TXT file**\n\n"
+        "⏱️ **Processing:** Usually within 1–2 hours\n"
+        "📋 Orders expire after **24 hours** if not approved\n\n"
+        f"🆘 **Support:** {support}",
         parse_mode="Markdown",
     )
 
