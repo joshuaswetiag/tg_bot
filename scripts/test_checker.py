@@ -8,15 +8,17 @@ from bot.utils.proxy_checker import check_proxies, parse_proxies_from_text, prog
 
 def test_parse() -> None:
     text = """
+vSWOdfHdZfA0_custom_zone_AI_st__city_sid_57260950_time_5:4899816:change4.owlproxy.com:7778
 103.45.12.1:8080
 103.45.12.2:8080:user:pass
 user:pass@103.45.12.3:3128
 invalid line
-103.45.12.4:8080
 """
     parsed = parse_proxies_from_text(text)
     assert len(parsed) == 4, parsed
-    assert parsed[1] == "user:pass@103.45.12.2:8080"
+    assert parsed[0].endswith("@change4.owlproxy.com:7778"), parsed[0]
+    assert parsed[0].startswith("vSWOdfHdZfA0"), parsed[0]
+    assert parsed[2] == "user:pass@103.45.12.2:8080", parsed[2]
     print("Parse test: PASS")
 
 

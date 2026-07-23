@@ -27,6 +27,16 @@ class CheckResult:
     detail: str
 
 
+def _is_valid_port(value: str) -> bool:
+    return value.isdigit() and 1 <= int(value) <= 65535
+
+
+def _looks_like_host(value: str) -> bool:
+    if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", value):
+        return True
+    return "." in value
+
+
 def normalize_proxy(line: str) -> str | None:
     line = line.strip()
     if not line or line.startswith("#"):
@@ -38,10 +48,24 @@ def normalize_proxy(line: str) -> str | None:
     parts = line.split(":")
     if len(parts) == 2:
         return line if _PROXY_AT_RE.match(line) else None
-    if len(parts) == 4:
-        host, port, user, password = parts
-        normalized = f"{user}:{password}@{host}:{port}"
-        return normalized if _PROXY_AT_RE.match(normalized) else None
+
+    if len(parts) >= 4:
+        port_str = parts[-1]
+        host = parts[-2]
+
+        # user:pass:host:port — Owl Proxy and many residential providers
+        if _is_valid_port(port_str) and _looks_like_host(host):
+            password = parts[-3]
+            user = ":".join(parts[:-3])
+            normalized = f"{user}:{password}@{host}:{port_str}"
+            return normalized if _PROXY_AT_RE.match(normalized) else None
+
+        # host:port:user:pass
+        if len(parts) == 4 and _is_valid_port(parts[1]) and _looks_like_host(parts[0]):
+            host, port_str, user, password = parts
+            normalized = f"{user}:{password}@{host}:{port_str}"
+            return normalized if _PROXY_AT_RE.match(normalized) else None
+
     return None
 
 

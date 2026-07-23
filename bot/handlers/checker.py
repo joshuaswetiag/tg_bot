@@ -24,6 +24,7 @@ def _checker_intro(daily_limit: int) -> str:
         "<code>.txt</code> files containing working (live) and dead proxies.\n\n"
         "📝 <b>Supported Formats:</b>\n"
         "• <code>host:port</code>\n"
+        "• <code>user:pass:host:port</code>\n"
         "• <code>host:port:user:pass</code>\n"
         "• <code>user:pass@host:port</code>\n\n"
         f"💡 <b>Limits:</b> Max {MAX_PROXIES_PER_CHECK} proxies per check, "
@@ -59,7 +60,7 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             "✅ Proxy Checker Mode Active\n\n"
             "Send proxies (one per line) or upload a .txt file.\n"
-            "Formats: host:port | host:port:user:pass | user:pass@host:port",
+            "Formats: host:port | user:pass:host:port | host:port:user:pass | user:pass@host:port",
             reply_markup=CHECKER_CANCEL_KEYBOARD,
         )
 
@@ -110,6 +111,7 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
             "No valid proxies found.\n\n"
             "Supported formats:\n"
             "• host:port\n"
+            "• user:pass:host:port\n"
             "• host:port:user:pass\n"
             "• user:pass@host:port"
         )
