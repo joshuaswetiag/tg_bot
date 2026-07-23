@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, filters
 
-from bot.keyboards import BTN_HELP
+from bot.keyboards import BTN_HELP, MAIN_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.user_state import clear_input_modes
 
@@ -27,6 +27,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "📋 Orders expire after **24 hours** if not approved\n\n"
         f"🆘 **Support:** {support}",
         parse_mode="Markdown",
+        reply_markup=MAIN_KEYBOARD,
     )
 
 

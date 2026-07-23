@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from telegram import Bot
+from telegram import Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.error import Forbidden, TelegramError
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,8 @@ MAINTENANCE_NOTICE = (
 
 BACK_ONLINE_NOTICE = (
     "<b>🎉 The bot is back online!</b>\n\n"
-    "Maintenance is complete, and you can now purchase proxies."
+    "Maintenance is complete, and you can now purchase proxies.\n\n"
+    "Use the menu below to get started."
 )
 
 
@@ -24,6 +25,7 @@ async def broadcast_message(
     text: str,
     *,
     parse_mode: str | None = "HTML",
+    reply_markup: ReplyKeyboardMarkup | ReplyKeyboardRemove | None = None,
     exclude_ids: set[int] | None = None,
 ) -> tuple[int, int]:
     """Send a message to many users. Returns (sent, failed)."""
@@ -33,6 +35,8 @@ async def broadcast_message(
     kwargs: dict = {}
     if parse_mode:
         kwargs["parse_mode"] = parse_mode
+    if reply_markup is not None:
+        kwargs["reply_markup"] = reply_markup
 
     for user_id in user_ids:
         if user_id in exclude:

@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from bot.config import CUSTOM_ORDER_MAX, CUSTOM_ORDER_MIN, CUSTOM_PRICE_PER_PROXY
 from bot.database import Database
 from bot.handlers.buy import _prompt_payment_method
-from bot.keyboards import BTN_CUSTOM
+from bot.keyboards import BTN_CUSTOM, MAIN_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.user_state import WAITING_CUSTOM_QTY, clear_input_modes, is_menu_button
 
@@ -24,7 +24,9 @@ async def custom_order_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     clear_input_modes(context)
     context.user_data[WAITING_CUSTOM_QTY] = True
-    await update.message.reply_text(CUSTOM_ORDER_INTRO, parse_mode="Markdown")
+    await update.message.reply_text(
+        CUSTOM_ORDER_INTRO, parse_mode="Markdown", reply_markup=MAIN_KEYBOARD
+    )
 
 
 async def receive_custom_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -3,7 +3,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, Mes
 
 from bot.config import PACK_BY_ID
 from bot.database import Database
-from bot.keyboards import BTN_BUY, pack_selection_keyboard
+from bot.keyboards import BTN_BUY, MAIN_KEYBOARD, pack_selection_keyboard
 from bot.utils.access import ensure_access
 from bot.utils.order_messages import order_submitted
 from bot.utils.payment import (
@@ -78,11 +78,15 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     clear_input_modes(context)
     await update.message.reply_text(
-        "📦 **Choose a Proxy Pack:**\n\n"
-        "🧪 **Test Pack** — 1 proxy @ ৳10 (for testing)\n\n"
+        "📦 <b>Choose a Proxy Pack:</b>\n\n"
+        "🧪 <b>Test Pack</b> — 1 proxy @ ৳10 (for testing)\n\n"
         "All prices in BDT (Bangladeshi Taka).",
+        reply_markup=MAIN_KEYBOARD,
+        parse_mode="HTML",
+    )
+    await update.message.reply_text(
+        "Select a pack:",
         reply_markup=pack_selection_keyboard(),
-        parse_mode="Markdown",
     )
 
 
@@ -104,6 +108,11 @@ async def pack_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     pack_key = query.data.split(":", 1)[1]
     if pack_key == "cancel":
         await query.edit_message_text("❌ Purchase cancelled.")
+        if query.message:
+            await query.message.reply_text(
+                "Choose an option from the menu:",
+                reply_markup=MAIN_KEYBOARD,
+            )
         context.user_data.pop("active_order_id", None)
         context.user_data.pop(WAITING_TRX, None)
         return

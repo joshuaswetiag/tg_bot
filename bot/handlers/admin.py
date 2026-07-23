@@ -1,11 +1,12 @@
 import io
 
-from telegram import InputFile, Update
+from telegram import InputFile, ReplyKeyboardRemove, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.database import Database
 from bot.keyboards import (
     ADMIN_CANCEL_KEYBOARD,
+    MAIN_KEYBOARD,
     admin_panel_keyboard,
     order_admin_keyboard,
 )
@@ -74,6 +75,7 @@ async def _enable_maintenance(context: ContextTypes.DEFAULT_TYPE) -> tuple[int, 
         context.bot,
         db.get_all_user_ids(),
         MAINTENANCE_NOTICE,
+        reply_markup=ReplyKeyboardRemove(),
         exclude_ids=set(settings.admin_ids),
     )
 
@@ -86,6 +88,7 @@ async def _disable_maintenance(context: ContextTypes.DEFAULT_TYPE) -> tuple[int,
         context.bot,
         db.get_all_user_ids(),
         BACK_ONLINE_NOTICE,
+        reply_markup=MAIN_KEYBOARD,
         exclude_ids=set(settings.admin_ids),
     )
 

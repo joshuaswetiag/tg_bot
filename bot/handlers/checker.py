@@ -6,7 +6,7 @@ from telegram import InputFile, Update
 from telegram.ext import CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 from bot.database import Database
-from bot.keyboards import BTN_CHECKER, CHECKER_CANCEL_KEYBOARD
+from bot.keyboards import BTN_CHECKER, CHECKER_CANCEL_KEYBOARD, MAIN_KEYBOARD, MAIN_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.proxy_checker import check_proxies, parse_proxies_from_text, progress_bar
 from bot.utils.user_state import WAITING_CUSTOM_QTY, WAITING_PROXY_CHECK, is_menu_button
@@ -52,8 +52,12 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await update.message.reply_text(
             _checker_intro(_daily_limit(context)),
-            reply_markup=CHECKER_CANCEL_KEYBOARD,
+            reply_markup=MAIN_KEYBOARD,
             parse_mode="HTML",
+        )
+        await update.message.reply_text(
+            "Tap below to cancel checking:",
+            reply_markup=CHECKER_CANCEL_KEYBOARD,
         )
     except Exception:
         logger.exception("Failed to send checker intro")
@@ -61,6 +65,10 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             "✅ Proxy Checker Mode Active\n\n"
             "Send proxies (one per line) or upload a .txt file.\n"
             "Formats: host:port | user:pass:host:port | host:port:user:pass | user:pass@host:port",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        await update.message.reply_text(
+            "Tap below to cancel checking:",
             reply_markup=CHECKER_CANCEL_KEYBOARD,
         )
 
@@ -72,6 +80,11 @@ async def checker_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     context.user_data.pop(WAITING_PROXY_CHECK, None)
     await query.edit_message_text("❌ Proxy check cancelled.")
+    if query.message:
+        await query.message.reply_text(
+            "Choose an option from the menu:",
+            reply_markup=MAIN_KEYBOARD,
+        )
 
 
 async def _extract_proxy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str | None:

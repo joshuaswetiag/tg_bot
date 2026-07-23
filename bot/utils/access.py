@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import ReplyKeyboardRemove, Update
 from telegram.ext import ContextTypes
 
 from bot.database import Database
@@ -36,6 +36,7 @@ async def ensure_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> b
                 "The bot is currently under maintenance. "
                 "We will notify you here as soon as the bot is back online!",
                 parse_mode="HTML",
+                reply_markup=ReplyKeyboardRemove(),
             )
         return False
 

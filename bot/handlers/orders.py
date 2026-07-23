@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, MessageHandler, filters
 
 from bot.database import Database
-from bot.keyboards import BTN_ORDERS
+from bot.keyboards import BTN_ORDERS, MAIN_KEYBOARD, MAIN_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.user_state import clear_input_modes
 
@@ -27,7 +27,9 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     orders = db.get_user_orders(user.id)
     if not orders:
-        await update.message.reply_text("📋 You have no orders yet.")
+        await update.message.reply_text(
+            "📋 You have no orders yet.", reply_markup=MAIN_KEYBOARD
+        )
         return
 
     lines = ["📋 **My Orders**\n"]
@@ -40,7 +42,9 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if order["status"] == "completed" and order["proxies"]:
             lines.append(f"```\n{order['proxies']}\n```")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text(
+        "\n".join(lines), parse_mode="Markdown", reply_markup=MAIN_KEYBOARD
+    )
 
 
 def register_orders_handlers(application) -> None:
