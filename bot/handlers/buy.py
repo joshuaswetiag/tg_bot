@@ -10,7 +10,7 @@ from bot.utils.payment import (
     payment_method_keyboard,
     payment_method_prompt,
 )
-from bot.utils.user_state import WAITING_TRX, clear_input_modes, is_menu_button
+from bot.utils.user_state import WAITING_TRX, clear_input_modes, is_menu_button, stop_menu_navigation
 
 
 async def _prompt_payment_method(
@@ -83,6 +83,7 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         reply_markup=pack_selection_keyboard(),
         parse_mode="Markdown",
     )
+    stop_menu_navigation()
 
 
 async def test_buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

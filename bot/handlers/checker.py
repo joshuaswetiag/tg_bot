@@ -8,28 +8,38 @@ from bot.database import Database
 from bot.keyboards import BTN_CHECKER, CHECKER_CANCEL_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.proxy_checker import check_proxies, parse_proxies_from_text, progress_bar
-from bot.utils.user_state import WAITING_PROXY_CHECK, clear_input_modes, is_menu_button
+from bot.utils.user_state import (
+    WAITING_PROXY_CHECK,
+    clear_input_modes,
+    is_menu_button,
+    stop_menu_navigation,
+)
 
 MAX_PROXIES_PER_CHECK = 200
-MAX_CHECKS_PER_24H = 5
 
-CHECKER_INTRO = (
-    "✅ **Proxy Checker Mode Active**\n\n"
-    "Send me a list of proxies, or upload a `.txt` file, and I will check them "
-    "concurrently for you. I will return a progress bar, summary, and clean `.txt` "
-    "files containing working (live) and dead proxies.\n\n"
-    "📝 **Supported Formats:**\n"
-    "• `host:port`\n"
-    "• `host:port:user:pass`\n"
-    "• `user:pass@host:port`\n\n"
-    f"💡 **Limits:** Max {MAX_PROXIES_PER_CHECK} proxies per check, "
-    f"up to {MAX_CHECKS_PER_24H} checks per 24 hours."
-)
+
+def _checker_intro(daily_limit: int) -> str:
+    return (
+        "✅ **Proxy Checker Mode Active**\n\n"
+        "Send me a list of proxies, or upload a `.txt` file, and I will check them "
+        "concurrently for you. I will return a progress bar, summary, and clean `.txt` "
+        "files containing working (live) and dead proxies.\n\n"
+        "📝 **Supported Formats:**\n"
+        "• `host:port`\n"
+        "• `host:port:user:pass`\n"
+        "• `user:pass@host:port`\n\n"
+        f"💡 **Limits:** Max {MAX_PROXIES_PER_CHECK} proxies per check, "
+        f"up to {daily_limit} checks per 24 hours."
+    )
 
 
 def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user = update.effective_user
     return bool(user and user.id in context.bot_data["settings"].admin_ids)
+
+
+def _daily_limit(context: ContextTypes.DEFAULT_TYPE) -> int:
+    return int(context.bot_data["settings"].checker_daily_limit)
 
 
 async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -39,10 +49,11 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     clear_input_modes(context)
     context.user_data[WAITING_PROXY_CHECK] = True
     await update.message.reply_text(
-        CHECKER_INTRO,
+        _checker_intro(_daily_limit(context)),
         reply_markup=CHECKER_CANCEL_KEYBOARD,
         parse_mode="Markdown",
     )
+    stop_menu_navigation()
 
 
 async def checker_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -79,7 +90,11 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
     if not message or not user:
         return
 
+    if not raw_text.strip():
+        return
+
     db: Database = context.bot_data["db"]
+    daily_limit = _daily_limit(context)
     proxies = parse_proxies_from_text(raw_text)
 
     if not proxies:
@@ -100,10 +115,10 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
 
     if not _is_admin(update, context):
         used = db.count_proxy_checks_24h(user.id)
-        if used >= MAX_CHECKS_PER_24H:
+        if used >= daily_limit:
             await message.reply_text(
-                f"⏳ Limit reached: {MAX_CHECKS_PER_24H} checks per 24 hours.\n"
-                "Please try again later."
+                f"⏳ Limit reached: {daily_limit} checks per 24 hours.\n"
+                f"You have used {used}/{daily_limit}. Please try again later."
             )
             context.user_data.pop(WAITING_PROXY_CHECK, None)
             return
@@ -166,14 +181,21 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
         await message.reply_document(dead_file, caption=f"❌ {len(dead)} dead proxies")
 
 
+def _is_proxy_check_input(update: Update) -> bool:
+    message = update.message
+    if not message:
+        return False
+    if message.document:
+        return True
+    if message.text and not is_menu_button(message.text):
+        return True
+    return False
+
+
 async def receive_proxies_to_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.user_data.get(WAITING_PROXY_CHECK):
         return
     if not update.message or not await ensure_access(update, context):
-        return
-
-    if update.message.text and is_menu_button(update.message.text):
-        clear_input_modes(context)
         return
 
     raw = await _extract_proxy_text(update, context)
@@ -187,7 +209,7 @@ def register_checker_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(checker_cancel, pattern=r"^checker:cancel$"))
     application.add_handler(
         MessageHandler(
-            (filters.TEXT | filters.Document.ALL) & ~filters.COMMAND,
+            filters.create(_is_proxy_check_input) & ~filters.COMMAND,
             receive_proxies_to_check,
         ),
         group=2,

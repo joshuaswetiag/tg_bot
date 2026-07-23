@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from bot.database import Database
 from bot.keyboards import BTN_PROFILE
 from bot.utils.access import ensure_access
-from bot.utils.user_state import clear_input_modes
+from bot.utils.user_state import clear_input_modes, stop_menu_navigation
 
 
 async def my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -32,6 +32,7 @@ async def my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"**Stock available:** {stock} proxies",
         parse_mode="Markdown",
     )
+    stop_menu_navigation()
 
 
 def register_profile_handlers(application) -> None:

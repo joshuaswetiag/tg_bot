@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from bot.database import Database
 from bot.keyboards import BTN_ORDERS
 from bot.utils.access import ensure_access
-from bot.utils.user_state import clear_input_modes
+from bot.utils.user_state import clear_input_modes, stop_menu_navigation
 
 STATUS_LABELS = {
     "awaiting_payment": "⏳ Awaiting payment",
@@ -28,6 +28,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     orders = db.get_user_orders(user.id)
     if not orders:
         await update.message.reply_text("📋 You have no orders yet.")
+        stop_menu_navigation()
         return
 
     lines = ["📋 **My Orders**\n"]
@@ -41,6 +42,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             lines.append(f"```\n{order['proxies']}\n```")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    stop_menu_navigation()
 
 
 def register_orders_handlers(application) -> None:

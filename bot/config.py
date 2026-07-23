@@ -40,6 +40,7 @@ class Settings:
     nagad_type: str
     support_username: str
     bot_name: str
+    checker_daily_limit: int
     database_url: str
     db_path: str
 
@@ -86,6 +87,7 @@ def load_settings() -> Settings:
         nagad_type=os.getenv("NAGAD_TYPE", "Personal"),
         support_username=os.getenv("SUPPORT_USERNAME", "@Noyon001"),
         bot_name=os.getenv("BOT_NAME", "Proxy Store"),
+        checker_daily_limit=int(os.getenv("CHECKER_DAILY_LIMIT", "5")),
         database_url=os.getenv("DATABASE_URL", ""),
         db_path=os.getenv("DB_PATH", "data/bot.db"),
     )

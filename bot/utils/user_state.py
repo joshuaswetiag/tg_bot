@@ -1,3 +1,5 @@
+from telegram.ext import ApplicationHandlerStop
+
 from bot.keyboards import (
     BTN_BUY,
     BTN_CHECKER,
@@ -21,6 +23,11 @@ def is_menu_button(text: str | None) -> bool:
 
 
 def clear_input_modes(context) -> None:
-    """Exit checker / custom-order input modes when user taps the main menu."""
+    """Exit checker / custom-order input modes."""
     context.user_data.pop(WAITING_PROXY_CHECK, None)
     context.user_data.pop(WAITING_CUSTOM_QTY, None)
+
+
+def stop_menu_navigation() -> None:
+    """Stop lower-priority handlers from treating menu taps as user input."""
+    raise ApplicationHandlerStop
