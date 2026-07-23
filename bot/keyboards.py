@@ -22,15 +22,11 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
 
 
 def pack_selection_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [
-            InlineKeyboardButton(
-                f"📦 {p.name} — {p.count} proxies @ ৳{int(p.price)}",
-                callback_data=f"pack:{p.id}",
-            )
-        ]
-        for p in PROXY_PACKS
-    ]
+    buttons = []
+    for p in PROXY_PACKS:
+        prefix = "🧪 " if p.id == "test" else "📦 "
+        label = f"{prefix}{p.name} — {p.count} proxy{'ies' if p.count != 1 else ''} @ ৳{int(p.price)}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"pack:{p.id}")])
     buttons.append([InlineKeyboardButton("❌ Cancel", callback_data="pack:cancel")])
     return InlineKeyboardMarkup(buttons)
 

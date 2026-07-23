@@ -1,5 +1,5 @@
 from telegram import Update
-from telegram.ext import CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.config import PACK_BY_ID
 from bot.database import Database
@@ -9,15 +9,68 @@ from bot.utils.access import ensure_access
 WAITING_TRX = "waiting_trx"
 
 
+async def _start_pack_order(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str
+) -> None:
+    pack = PACK_BY_ID.get(pack_id)
+    if not pack:
+        msg = update.effective_message
+        if msg:
+            await msg.reply_text("Unknown pack.")
+        return
+
+    db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
+    user = update.effective_user
+    if not user:
+        return
+
+    available = db.count_available_proxies()
+    if available < pack.count:
+        msg = update.effective_message
+        if msg:
+            await msg.reply_text(
+                f"⚠️ Not enough stock. Need {pack.count}, have {available}.\n"
+                "Ask admin to add proxies with /add_proxies"
+            )
+        return
+
+    order_id = db.create_order(user.id, pack.id, pack.name, pack.count, pack.price)
+    context.user_data["active_order_id"] = order_id
+    context.user_data[WAITING_TRX] = True
+
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(
+            f"💳 **bKash Payment**\n\n"
+            f"Send **৳{pack.price:.1f}** to:\n"
+            f"**Number:** `{settings.bkash_number}`\n"
+            f"**Account Type:** {settings.bkash_type}\n\n"
+            f"Send money → Personal → Enter amount → "
+            f"Use reference: your Telegram ID (`{user.id}`)\n\n"
+            f"✅ After sending, reply with your **Transaction ID (TRX ID):**",
+            parse_mode="Markdown",
+        )
+
+
 async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not await ensure_access(update, context):
         return
 
     await update.message.reply_text(
-        "📦 **Choose a Proxy Pack:**\n\nAll prices in BDT (Bangladeshi Taka).",
+        "📦 **Choose a Proxy Pack:**\n\n"
+        "🧪 **Test Pack** — 1 proxy @ ৳10 (for testing)\n\n"
+        "All prices in BDT (Bangladeshi Taka).",
         reply_markup=pack_selection_keyboard(),
         parse_mode="Markdown",
     )
+
+
+async def test_buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Quick test: buy 1 proxy without opening the full pack menu."""
+    if not update.message or not await ensure_access(update, context):
+        return
+    await _start_pack_order(update, context, "test")
 
 
 async def pack_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -140,6 +193,7 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 def register_buy_handlers(application) -> None:
+    application.add_handler(CommandHandler("testbuy", test_buy_command))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_BUY}$"), buy_proxies))
     application.add_handler(CallbackQueryHandler(pack_selected, pattern=r"^pack:"))
     application.add_handler(
