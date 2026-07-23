@@ -24,9 +24,8 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
 def pack_selection_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for p in PROXY_PACKS:
-        prefix = "🧪 " if p.id == "test" else "📦 "
         label = (
-            f"{prefix}{p.name} — {p.count} account{'s' if p.count != 1 else ''} "
+            f"📦 {p.name} — {p.count} account{'s' if p.count != 1 else ''} "
             f"@ ৳{int(p.price)}"
         )
         buttons.append([InlineKeyboardButton(label, callback_data=f"pack:{p.id}")])

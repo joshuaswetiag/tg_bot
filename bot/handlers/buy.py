@@ -1,5 +1,5 @@
 from telegram import Update
-from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 from bot.config import PACK_BY_ID
 from bot.database import Database
@@ -80,7 +80,6 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     clear_input_modes(context)
     await update.message.reply_text(
         "📦 <b>Choose a Proxy Account Pack:</b>\n\n"
-        "🧪 <b>Test Pack</b> — 1 account @ ৳10 (for testing)\n\n"
         "All prices in BDT (Bangladeshi Taka).",
         reply_markup=MAIN_KEYBOARD,
         parse_mode="HTML",
@@ -89,12 +88,6 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "Select a pack:",
         reply_markup=pack_selection_keyboard(),
     )
-
-
-async def test_buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not await ensure_access(update, context):
-        return
-    await _start_pack_order(update, context, "test")
 
 
 async def pack_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -275,7 +268,6 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 def register_buy_handlers(application) -> None:
-    application.add_handler(CommandHandler("testbuy", test_buy_command))
     application.add_handler(MessageHandler(filters.Text([BTN_BUY]), buy_proxies))
     application.add_handler(CallbackQueryHandler(pack_selected, pattern=r"^pack:"))
     application.add_handler(CallbackQueryHandler(payment_method_selected, pattern=r"^pay:"))
