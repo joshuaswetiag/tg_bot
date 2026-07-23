@@ -130,6 +130,11 @@ class SqliteDatabase:
             ).fetchone()
             return dict(row) if row else None
 
+    def get_all_user_ids(self) -> list[int]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT user_id FROM users ORDER BY user_id").fetchall()
+            return [int(row["user_id"]) for row in rows]
+
     def create_order(
         self,
         user_id: int,

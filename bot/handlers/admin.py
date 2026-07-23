@@ -4,6 +4,7 @@ from telegram import InputFile, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.database import Database
+from bot.utils.broadcast import BACK_ONLINE_NOTICE, MAINTENANCE_NOTICE, broadcast_message
 from bot.utils.order_messages import (
     order_delivered,
     order_proxy_caption,
@@ -33,8 +34,9 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"Proxy stock: {stock}\n"
         f"Pending orders: {pending}\n\n"
         "**Commands:**\n"
-        "`/maintenance_on` — Enable maintenance\n"
-        "`/maintenance_off` — Disable maintenance\n"
+        "`/maintenance_on` — Enable maintenance + notify all users\n"
+        "`/maintenance_off` — Disable maintenance + notify all users\n"
+        "`/broadcast <message>` — Send notice to all users\n"
         "`/add_proxies` — Reply to a message with proxy list\n"
         "`/stock` — Show available stock\n"
         "`/pending` — List pending orders",
@@ -46,16 +48,86 @@ async def maintenance_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not update.message or not _is_admin(update, context):
         return
     db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
     db.set_maintenance(True)
-    await update.message.reply_text("⚠️ Maintenance mode enabled.")
+
+    user_ids = db.get_all_user_ids()
+    sent, failed = await broadcast_message(
+        context.bot,
+        user_ids,
+        MAINTENANCE_NOTICE,
+        exclude_ids=set(settings.admin_ids),
+    )
+    await update.message.reply_text(
+        f"⚠️ Maintenance mode enabled.\n"
+        f"Notice sent to {sent} user(s)."
+        + (f" ({failed} unreachable)" if failed else "")
+    )
 
 
 async def maintenance_off(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
     db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
     db.set_maintenance(False)
-    await update.message.reply_text("🎉 Maintenance mode disabled. Bot is back online!")
+
+    user_ids = db.get_all_user_ids()
+    sent, failed = await broadcast_message(
+        context.bot,
+        user_ids,
+        BACK_ONLINE_NOTICE,
+        exclude_ids=set(settings.admin_ids),
+    )
+    await update.message.reply_text(
+        f"🎉 Maintenance mode disabled.\n"
+        f"Back-online notice sent to {sent} user(s)."
+        + (f" ({failed} unreachable)" if failed else "")
+    )
+
+
+async def broadcast_notice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+
+    text = ""
+    if update.message.reply_to_message and update.message.reply_to_message.text:
+        text = update.message.reply_to_message.text.strip()
+    elif context.args:
+        text = " ".join(context.args).strip()
+
+    if not text:
+        await update.message.reply_text(
+            "Send a notice to all bot users.\n\n"
+            "<b>Usage:</b>\n"
+            "• <code>/broadcast Your message here</code>\n"
+            "• Reply to any message with <code>/broadcast</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
+    user_ids = db.get_all_user_ids()
+    if not user_ids:
+        await update.message.reply_text("No users in database yet.")
+        return
+
+    status = await update.message.reply_text(
+        f"📢 Broadcasting to {len(user_ids)} user(s)..."
+    )
+    sent, failed = await broadcast_message(
+        context.bot,
+        user_ids,
+        text,
+        parse_mode=None,
+        exclude_ids=set(settings.admin_ids),
+    )
+    await status.edit_text(
+        f"📢 Broadcast complete.\n"
+        f"Sent: {sent}\n"
+        f"Failed: {failed}"
+    )
 
 
 async def show_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -183,6 +255,8 @@ def register_admin_handlers(application) -> None:
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("maintenance_on", maintenance_on))
     application.add_handler(CommandHandler("maintenance_off", maintenance_off))
+    application.add_handler(CommandHandler("broadcast", broadcast_notice))
+    application.add_handler(CommandHandler("notice", broadcast_notice))
     application.add_handler(CommandHandler("stock", show_stock))
     application.add_handler(CommandHandler("pending", show_pending))
     application.add_handler(CommandHandler("add_proxies", add_proxies_command))

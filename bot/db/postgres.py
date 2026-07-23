@@ -127,6 +127,12 @@ class PostgresDatabase:
                 cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
                 return self._row_to_dict(cur.fetchone())
 
+    def get_all_user_ids(self) -> list[int]:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id FROM users ORDER BY user_id")
+                return [int(row["user_id"]) for row in cur.fetchall()]
+
     def create_order(
         self,
         user_id: int,

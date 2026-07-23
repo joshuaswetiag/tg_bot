@@ -32,10 +32,10 @@ async def ensure_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> b
         msg = update.effective_message
         if msg:
             await msg.reply_text(
-                "⚠️ **Bot Under Maintenance**\n\n"
+                "<b>⚠️ Bot Under Maintenance</b>\n\n"
                 "The bot is currently under maintenance. "
                 "We will notify you here as soon as the bot is back online!",
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         return False
 
