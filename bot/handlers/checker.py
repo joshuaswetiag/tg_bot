@@ -11,7 +11,7 @@ from bot.utils.proxy_checker import check_proxies, parse_proxies_from_text, prog
 from bot.utils.user_state import WAITING_PROXY_CHECK, clear_input_modes, is_menu_button
 
 MAX_PROXIES_PER_CHECK = 200
-MAX_CHECKS_PER_24H = 2
+MAX_CHECKS_PER_24H = 5
 
 CHECKER_INTRO = (
     "✅ **Proxy Checker Mode Active**\n\n"
