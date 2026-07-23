@@ -5,6 +5,7 @@ from bot.config import PACK_BY_ID
 from bot.database import Database
 from bot.keyboards import BTN_BUY, pack_selection_keyboard
 from bot.utils.access import ensure_access
+from bot.utils.order_messages import order_submitted
 from bot.utils.payment import (
     payment_instructions,
     payment_method_keyboard,
@@ -31,13 +32,13 @@ async def _prompt_payment_method(
 
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
-            text, reply_markup=markup, parse_mode="Markdown"
+            text, reply_markup=markup, parse_mode="HTML"
         )
         return
 
     msg = update.effective_message
     if msg:
-        await msg.reply_text(text, reply_markup=markup, parse_mode="Markdown")
+        await msg.reply_text(text, reply_markup=markup, parse_mode="HTML")
 
 
 async def _start_pack_order(
@@ -179,7 +180,7 @@ async def payment_method_selected(update: Update, context: ContextTypes.DEFAULT_
             user.id,
             int(order["proxy_count"]),
         ),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -227,11 +228,15 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data.pop("active_order_id", None)
 
     await update.message.reply_text(
-        "✅ **Payment submitted!**\n\n"
-        f"Order #{order_id} is pending admin review.\n"
-        "You'll receive your proxies once approved.\n\n"
-        "⏱️ Processing: Usually within 1–2 hours",
-        parse_mode="Markdown",
+        order_submitted(
+            order_id=order_id,
+            pack_name=order["pack_name"],
+            proxy_count=int(order["proxy_count"]),
+            amount=float(order["amount"]),
+            payment_method=payment_method,
+            trx_id=trx_id,
+        ),
+        parse_mode="HTML",
     )
 
     from bot.keyboards import order_admin_keyboard
