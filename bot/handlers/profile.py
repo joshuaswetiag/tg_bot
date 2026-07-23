@@ -4,12 +4,14 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from bot.database import Database
 from bot.keyboards import BTN_PROFILE
 from bot.utils.access import ensure_access
+from bot.utils.user_state import clear_input_modes
 
 
 async def my_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not await ensure_access(update, context):
         return
 
+    clear_input_modes(context)
     db: Database = context.bot_data["db"]
     settings = context.bot_data["settings"]
     user = update.effective_user

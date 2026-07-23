@@ -6,8 +6,7 @@ from bot.database import Database
 from bot.handlers.buy import _prompt_payment_method
 from bot.keyboards import BTN_CUSTOM
 from bot.utils.access import ensure_access
-
-WAITING_CUSTOM_QTY = "waiting_custom_qty"
+from bot.utils.user_state import WAITING_CUSTOM_QTY, clear_input_modes, is_menu_button
 
 CUSTOM_ORDER_INTRO = (
     "📦 **Custom Order**\n\n"
@@ -23,6 +22,7 @@ async def custom_order_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not update.message or not await ensure_access(update, context):
         return
 
+    clear_input_modes(context)
     context.user_data[WAITING_CUSTOM_QTY] = True
     await update.message.reply_text(CUSTOM_ORDER_INTRO, parse_mode="Markdown")
 
@@ -33,6 +33,10 @@ async def receive_custom_quantity(update: Update, context: ContextTypes.DEFAULT_
     if not context.user_data.get(WAITING_CUSTOM_QTY):
         return
     if not await ensure_access(update, context):
+        return
+
+    if is_menu_button(update.message.text):
+        clear_input_modes(context)
         return
 
     text = update.message.text.strip().replace(",", "")

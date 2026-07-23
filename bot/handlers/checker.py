@@ -8,8 +8,8 @@ from bot.database import Database
 from bot.keyboards import BTN_CHECKER, CHECKER_CANCEL_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.proxy_checker import check_proxies, parse_proxies_from_text, progress_bar
+from bot.utils.user_state import WAITING_PROXY_CHECK, clear_input_modes, is_menu_button
 
-WAITING_PROXY_CHECK = "waiting_proxy_check"
 MAX_PROXIES_PER_CHECK = 200
 MAX_CHECKS_PER_24H = 2
 
@@ -36,6 +36,7 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not update.message or not await ensure_access(update, context):
         return
 
+    clear_input_modes(context)
     context.user_data[WAITING_PROXY_CHECK] = True
     await update.message.reply_text(
         CHECKER_INTRO,
@@ -169,6 +170,10 @@ async def receive_proxies_to_check(update: Update, context: ContextTypes.DEFAULT
     if not context.user_data.get(WAITING_PROXY_CHECK):
         return
     if not update.message or not await ensure_access(update, context):
+        return
+
+    if update.message.text and is_menu_button(update.message.text):
+        clear_input_modes(context)
         return
 
     raw = await _extract_proxy_text(update, context)

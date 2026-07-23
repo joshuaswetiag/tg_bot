@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 from bot.database import Database
 from bot.keyboards import BTN_ORDERS
 from bot.utils.access import ensure_access
+from bot.utils.user_state import clear_input_modes
 
 STATUS_LABELS = {
     "awaiting_payment": "⏳ Awaiting payment",
@@ -18,6 +19,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not await ensure_access(update, context):
         return
 
+    clear_input_modes(context)
     db: Database = context.bot_data["db"]
     user = update.effective_user
     if not user:

@@ -10,8 +10,7 @@ from bot.utils.payment import (
     payment_method_keyboard,
     payment_method_prompt,
 )
-
-WAITING_TRX = "waiting_trx"
+from bot.utils.user_state import WAITING_TRX, clear_input_modes, is_menu_button
 
 
 async def _prompt_payment_method(
@@ -76,6 +75,7 @@ async def buy_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not update.message or not await ensure_access(update, context):
         return
 
+    clear_input_modes(context)
     await update.message.reply_text(
         "📦 **Choose a Proxy Pack:**\n\n"
         "🧪 **Test Pack** — 1 proxy @ ৳10 (for testing)\n\n"
@@ -189,6 +189,9 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not context.user_data.get(WAITING_TRX):
         return
     if not await ensure_access(update, context):
+        return
+
+    if is_menu_button(update.message.text):
         return
 
     trx_id = update.message.text.strip()

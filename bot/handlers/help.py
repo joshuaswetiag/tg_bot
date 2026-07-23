@@ -3,12 +3,14 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 
 from bot.keyboards import BTN_HELP
 from bot.utils.access import ensure_access
+from bot.utils.user_state import clear_input_modes
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not await ensure_access(update, context):
         return
 
+    clear_input_modes(context)
     settings = context.bot_data["settings"]
     support = settings.support_username
     if not support.startswith("@"):
