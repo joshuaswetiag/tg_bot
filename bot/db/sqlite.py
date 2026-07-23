@@ -280,6 +280,57 @@ class SqliteDatabase:
             ).fetchone()
             return int(row["c"])
 
+    def list_available_stock(self, limit: int = 10000) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, proxy_line, added_at
+                FROM proxy_stock
+                WHERE used = 0
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_available_stock_item(self, stock_id: int) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM proxy_stock WHERE id = ? AND used = 0",
+                (stock_id,),
+            )
+            return cur.rowcount > 0
+
+    def delete_available_by_line(self, line: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM proxy_stock WHERE proxy_line = ? AND used = 0",
+                (line.strip(),),
+            )
+            return cur.rowcount > 0
+
+    def update_available_by_line(self, old_line: str, new_line: str) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE proxy_stock SET proxy_line = ?
+                WHERE proxy_line = ? AND used = 0
+                """,
+                (new_line.strip(), old_line.strip()),
+            )
+            return cur.rowcount > 0
+
+    def clear_available_stock(self) -> int:
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM proxy_stock WHERE used = 0")
+            return cur.rowcount
+
+    def replace_available_stock(self, accounts: list[str]) -> tuple[int, int]:
+        removed = self.clear_available_stock()
+        added = self.add_proxies(accounts)
+        return removed, added
+
     def trx_exists(self, trx_id: str) -> bool:
         with self._conn() as conn:
             row = conn.execute(

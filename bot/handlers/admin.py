@@ -9,10 +9,15 @@ from bot.keyboards import (
     MAIN_KEYBOARD,
     admin_panel_keyboard,
     order_admin_keyboard,
+    stock_clear_confirm_keyboard,
+    stock_manage_keyboard,
 )
 from bot.utils.account_stock import (
     account_count_label,
+    find_account_line,
     format_accounts_delivery_file,
+    format_stock_export_file,
+    normalize_account_line,
     parse_accounts_from_text,
     parse_accounts_upload,
 )
@@ -31,6 +36,7 @@ from bot.utils.user_state import (
     ADMIN_BROADCAST_TYPE,
     WAITING_ADMIN_BROADCAST,
     WAITING_ADMIN_PROXIES,
+    WAITING_ADMIN_STOCK_REPLACE,
     clear_admin_modes,
     is_menu_button,
 )
@@ -196,12 +202,148 @@ async def notice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await broadcast_notice(update, context, kind="notice")
 
 
+def _stock_manage_message(db: Database) -> str:
+    count = db.count_available_proxies()
+    return (
+        "<b>📦 Stock Manager</b>\n\n"
+        f"Available accounts: <b>{count}</b>\n\n"
+        "<b>Commands:</b>\n"
+        "• <code>/stock_export</code> — download stock file\n"
+        "• <code>/stock_delete login</code> — delete one account\n"
+        "• <code>/stock_edit login newpassword</code> — change password\n"
+        "• <code>/stock_replace</code> — replace all stock with new file\n\n"
+        "Or use the buttons below."
+    )
+
+
+async def _send_stock_manager(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, edit: bool = False
+) -> None:
+    db: Database = context.bot_data["db"]
+    text = _stock_manage_message(db)
+    markup = stock_manage_keyboard()
+    if edit and update.callback_query:
+        await update.callback_query.edit_message_text(
+            text, reply_markup=markup, parse_mode="HTML"
+        )
+        return
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(text, reply_markup=markup, parse_mode="HTML")
+
+
+async def _export_stock_file(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int
+) -> None:
+    db: Database = context.bot_data["db"]
+    items = db.list_available_stock()
+    lines = [item["proxy_line"] for item in items]
+    if not lines:
+        await context.bot.send_message(chat_id, "No available accounts in stock.")
+        return
+    content = format_stock_export_file(lines)
+    await context.bot.send_document(
+        chat_id,
+        InputFile(
+            io.BytesIO(content.encode("utf-8")),
+            filename="stock_accounts.txt",
+        ),
+        caption=f"📦 {len(lines)} available account(s)",
+    )
+
+
 async def show_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
+    await _send_stock_manager(update, context)
+
+
+async def stock_export_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    await _export_stock_file(context, update.message.chat_id)
+
+
+async def stock_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "Delete one unused account from stock.\n\n"
+            "Usage:\n"
+            "• <code>/stock_delete login</code>\n"
+            "• <code>/stock_delete login:password</code>",
+            parse_mode="HTML",
+        )
+        return
+
     db: Database = context.bot_data["db"]
+    raw = " ".join(context.args).strip()
+    line = normalize_account_line(raw)
+    if not line:
+        stock_lines = [item["proxy_line"] for item in db.list_available_stock()]
+        line = find_account_line(stock_lines, raw)
+    if not line:
+        await update.message.reply_text("Account not found in available stock.")
+        return
+    if db.delete_available_by_line(line):
+        await update.message.reply_text(
+            f"✅ Deleted account.\nRemaining stock: {db.count_available_proxies()}"
+        )
+    else:
+        await update.message.reply_text("Could not delete (already sold or missing).")
+
+
+async def stock_edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Edit one unused account in stock.\n\n"
+            "Usage:\n"
+            "• <code>/stock_edit login newpassword</code>\n"
+            "• <code>/stock_edit login:oldpass login:newpass</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    db: Database = context.bot_data["db"]
+    stock_lines = [item["proxy_line"] for item in db.list_available_stock()]
+    old_raw = context.args[0]
+    new_raw = " ".join(context.args[1:])
+
+    old_line = normalize_account_line(old_raw)
+    if not old_line:
+        old_line = find_account_line(stock_lines, old_raw)
+    if not old_line:
+        await update.message.reply_text("Account not found in available stock.")
+        return
+
+    new_line = normalize_account_line(new_raw)
+    if not new_line and ":" not in new_raw:
+        login = old_line.split(":", 1)[0]
+        new_line = normalize_account_line(f"{login}:{new_raw}")
+    if not new_line:
+        await update.message.reply_text("Invalid new account format.")
+        return
+
+    if db.update_available_by_line(old_line, new_line):
+        await update.message.reply_text("✅ Account updated in stock.")
+    else:
+        await update.message.reply_text("Could not update (already sold or missing).")
+
+
+async def stock_replace_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    clear_admin_modes(context)
+    context.user_data[WAITING_ADMIN_STOCK_REPLACE] = True
     await update.message.reply_text(
-        f"📦 Available accounts: {db.count_available_proxies()}"
+        "🔄 <b>Replace All Stock</b>\n\n"
+        "This removes ALL unsold accounts and loads a new file.\n\n"
+        "Upload <code>.csv</code> or <code>.xlsx</code> (column B = login, C = password).",
+        parse_mode="HTML",
+        reply_markup=ADMIN_CANCEL_KEYBOARD,
     )
 
 
@@ -389,9 +531,43 @@ async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if action == "stock":
+        await _send_stock_manager(update, context, edit=True)
+        return
+
+    if action == "stock_export":
+        chat_id = query.message.chat_id if query.message else None
+        if chat_id:
+            await _export_stock_file(context, chat_id)
+        return
+
+    if action == "stock_clear":
         db: Database = context.bot_data["db"]
+        count = db.count_available_proxies()
         await query.message.reply_text(
-            f"📦 Available accounts: {db.count_available_proxies()}"
+            f"⚠️ Clear <b>{count}</b> unsold account(s) from stock?\n"
+            "Sold accounts are not affected.",
+            parse_mode="HTML",
+            reply_markup=stock_clear_confirm_keyboard(),
+        )
+        return
+
+    if action == "stock_clear_yes":
+        db = context.bot_data["db"]
+        removed = db.clear_available_stock()
+        await query.message.reply_text(
+            f"🗑 Cleared {removed} account(s) from stock.\n"
+            f"Remaining: {db.count_available_proxies()}"
+        )
+        return
+
+    if action == "stock_replace":
+        clear_admin_modes(context)
+        context.user_data[WAITING_ADMIN_STOCK_REPLACE] = True
+        await query.message.reply_text(
+            "🔄 <b>Replace All Stock</b>\n\n"
+            "Upload <code>.csv</code> or <code>.xlsx</code> to replace all unsold accounts.",
+            parse_mode="HTML",
+            reply_markup=ADMIN_CANCEL_KEYBOARD,
         )
         return
 
@@ -444,6 +620,30 @@ async def receive_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_
 async def receive_admin_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
+
+    if context.user_data.get(WAITING_ADMIN_STOCK_REPLACE):
+        if update.message.document:
+            downloaded = await _download_document_bytes(update, context)
+            if not downloaded:
+                return
+            filename, data = downloaded
+            accounts = parse_accounts_upload(filename, data)
+            if not accounts:
+                await update.message.reply_text(
+                    "No valid accounts found in file.", parse_mode="HTML"
+                )
+                return
+            db: Database = context.bot_data["db"]
+            removed, added = db.replace_available_stock(accounts)
+            clear_admin_modes(context)
+            await update.message.reply_text(
+                f"🔄 Stock replaced.\n"
+                f"Removed: {removed}\n"
+                f"Added: {added}\n"
+                f"Total stock: {db.count_available_proxies()}"
+            )
+        return
+
     if not context.user_data.get(WAITING_ADMIN_PROXIES):
         return
 
@@ -535,6 +735,10 @@ def register_admin_handlers(application) -> None:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("notice", notice_command))
     application.add_handler(CommandHandler("stock", show_stock))
+    application.add_handler(CommandHandler("stock_export", stock_export_command))
+    application.add_handler(CommandHandler("stock_delete", stock_delete_command))
+    application.add_handler(CommandHandler("stock_edit", stock_edit_command))
+    application.add_handler(CommandHandler("stock_replace", stock_replace_command))
     application.add_handler(CommandHandler("pending", show_pending))
     application.add_handler(CommandHandler("add_proxies", add_proxies_command))
     application.add_handler(CommandHandler("add_accounts", add_proxies_command))

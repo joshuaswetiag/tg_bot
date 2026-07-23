@@ -67,6 +67,10 @@ ADMIN_BROADCAST = "adminpanel:broadcast"
 ADMIN_NOTICE = "adminpanel:notice"
 ADMIN_PENDING = "adminpanel:pending"
 ADMIN_STOCK = "adminpanel:stock"
+ADMIN_STOCK_EXPORT = "adminpanel:stock_export"
+ADMIN_STOCK_CLEAR = "adminpanel:stock_clear"
+ADMIN_STOCK_CLEAR_YES = "adminpanel:stock_clear_yes"
+ADMIN_STOCK_REPLACE = "adminpanel:stock_replace"
 ADMIN_ADD_PROXIES = "adminpanel:add_proxies"
 ADMIN_REFRESH = "adminpanel:refresh"
 ADMIN_CANCEL = "adminpanel:cancel"
@@ -100,3 +104,25 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
 ADMIN_CANCEL_KEYBOARD = InlineKeyboardMarkup(
     [[InlineKeyboardButton("❌ Cancel", callback_data=ADMIN_CANCEL)]]
 )
+
+
+def stock_manage_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("📥 Export Stock File", callback_data=ADMIN_STOCK_EXPORT)],
+            [InlineKeyboardButton("🔄 Replace All Stock", callback_data=ADMIN_STOCK_REPLACE)],
+            [InlineKeyboardButton("🗑 Clear All Stock", callback_data=ADMIN_STOCK_CLEAR)],
+            [InlineKeyboardButton("« Back", callback_data=ADMIN_REFRESH)],
+        ]
+    )
+
+
+def stock_clear_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Yes, clear all", callback_data=ADMIN_STOCK_CLEAR_YES),
+                InlineKeyboardButton("❌ Cancel", callback_data=ADMIN_STOCK),
+            ]
+        ]
+    )

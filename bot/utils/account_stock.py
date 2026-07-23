@@ -114,5 +114,17 @@ def format_accounts_delivery_file(account_lines: list[str]) -> str:
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
+def format_stock_export_file(account_lines: list[str]) -> str:
+    return format_accounts_delivery_file(account_lines)
+
+
+def find_account_line(db_lines: list[str], login: str) -> str | None:
+    login = login.strip()
+    for line in db_lines:
+        if line.split(":", 1)[0] == login:
+            return line
+    return None
+
+
 def account_count_label(count: int) -> str:
     return f"{count} proxy account{'s' if count != 1 else ''}"
