@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes, MessageHandler, filters
 
 from bot.keyboards import BTN_HELP
 from bot.utils.access import ensure_access
-from bot.utils.user_state import clear_input_modes, stop_menu_navigation
+from bot.utils.user_state import clear_input_modes
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -28,8 +28,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"🆘 **Support:** {support}",
         parse_mode="Markdown",
     )
-    stop_menu_navigation()
 
 
 def register_help_handlers(application) -> None:
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_HELP}$"), help_handler))
+    application.add_handler(MessageHandler(filters.Text([BTN_HELP]), help_handler))

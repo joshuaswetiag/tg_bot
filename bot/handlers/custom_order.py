@@ -6,7 +6,7 @@ from bot.database import Database
 from bot.handlers.buy import _prompt_payment_method
 from bot.keyboards import BTN_CUSTOM
 from bot.utils.access import ensure_access
-from bot.utils.user_state import WAITING_CUSTOM_QTY, clear_input_modes, is_menu_button, stop_menu_navigation
+from bot.utils.user_state import WAITING_CUSTOM_QTY, clear_input_modes, is_menu_button
 
 CUSTOM_ORDER_INTRO = (
     "📦 **Custom Order**\n\n"
@@ -25,7 +25,6 @@ async def custom_order_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     clear_input_modes(context)
     context.user_data[WAITING_CUSTOM_QTY] = True
     await update.message.reply_text(CUSTOM_ORDER_INTRO, parse_mode="Markdown")
-    stop_menu_navigation()
 
 
 async def receive_custom_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -77,7 +76,7 @@ async def receive_custom_quantity(update: Update, context: ContextTypes.DEFAULT_
 
 
 def register_custom_handlers(application) -> None:
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_CUSTOM}$"), custom_order_start))
+    application.add_handler(MessageHandler(filters.Text([BTN_CUSTOM]), custom_order_start))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, receive_custom_quantity),
         group=3,

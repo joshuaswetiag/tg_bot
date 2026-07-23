@@ -1,4 +1,5 @@
 import io
+import logging
 import time
 
 from telegram import InputFile, Update
@@ -8,27 +9,24 @@ from bot.database import Database
 from bot.keyboards import BTN_CHECKER, CHECKER_CANCEL_KEYBOARD
 from bot.utils.access import ensure_access
 from bot.utils.proxy_checker import check_proxies, parse_proxies_from_text, progress_bar
-from bot.utils.user_state import (
-    WAITING_PROXY_CHECK,
-    clear_input_modes,
-    is_menu_button,
-    stop_menu_navigation,
-)
+from bot.utils.user_state import WAITING_CUSTOM_QTY, WAITING_PROXY_CHECK, is_menu_button
+
+logger = logging.getLogger(__name__)
 
 MAX_PROXIES_PER_CHECK = 200
 
 
 def _checker_intro(daily_limit: int) -> str:
     return (
-        "✅ **Proxy Checker Mode Active**\n\n"
-        "Send me a list of proxies, or upload a `.txt` file, and I will check them "
-        "concurrently for you. I will return a progress bar, summary, and clean `.txt` "
-        "files containing working (live) and dead proxies.\n\n"
-        "📝 **Supported Formats:**\n"
-        "• `host:port`\n"
-        "• `host:port:user:pass`\n"
-        "• `user:pass@host:port`\n\n"
-        f"💡 **Limits:** Max {MAX_PROXIES_PER_CHECK} proxies per check, "
+        "✅ <b>Proxy Checker Mode Active</b>\n\n"
+        "Send me a list of proxies, or upload a <code>.txt</code> file, and I will check them "
+        "concurrently for you. I will return a progress bar, summary, and clean "
+        "<code>.txt</code> files containing working (live) and dead proxies.\n\n"
+        "📝 <b>Supported Formats:</b>\n"
+        "• <code>host:port</code>\n"
+        "• <code>host:port:user:pass</code>\n"
+        "• <code>user:pass@host:port</code>\n\n"
+        f"💡 <b>Limits:</b> Max {MAX_PROXIES_PER_CHECK} proxies per check, "
         f"up to {daily_limit} checks per 24 hours."
     )
 
@@ -39,7 +37,8 @@ def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 
 
 def _daily_limit(context: ContextTypes.DEFAULT_TYPE) -> int:
-    return int(context.bot_data["settings"].checker_daily_limit)
+    settings = context.bot_data["settings"]
+    return int(getattr(settings, "checker_daily_limit", 5))
 
 
 async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -48,12 +47,21 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     context.user_data.pop(WAITING_CUSTOM_QTY, None)
     context.user_data[WAITING_PROXY_CHECK] = True
-    await update.message.reply_text(
-        _checker_intro(_daily_limit(context)),
-        reply_markup=CHECKER_CANCEL_KEYBOARD,
-        parse_mode="Markdown",
-    )
-    stop_menu_navigation()
+
+    try:
+        await update.message.reply_text(
+            _checker_intro(_daily_limit(context)),
+            reply_markup=CHECKER_CANCEL_KEYBOARD,
+            parse_mode="HTML",
+        )
+    except Exception:
+        logger.exception("Failed to send checker intro")
+        await update.message.reply_text(
+            "✅ Proxy Checker Mode Active\n\n"
+            "Send proxies (one per line) or upload a .txt file.\n"
+            "Formats: host:port | host:port:user:pass | user:pass@host:port",
+            reply_markup=CHECKER_CANCEL_KEYBOARD,
+        )
 
 
 async def checker_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -126,8 +134,8 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
     context.user_data.pop(WAITING_PROXY_CHECK, None)
     total = len(proxies)
     status_msg = await message.reply_text(
-        f"🔍 Checking **{total}** proxies...\n\n{progress_bar(0, total)}",
-        parse_mode="Markdown",
+        f"🔍 Checking <b>{total}</b> proxies...\n\n{progress_bar(0, total)}",
+        parse_mode="HTML",
     )
 
     last_edit = 0.0
@@ -140,8 +148,8 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
         last_edit = now
         try:
             await status_msg.edit_text(
-                f"🔍 Checking **{count}** proxies...\n\n{progress_bar(done, count)}",
-                parse_mode="Markdown",
+                f"🔍 Checking <b>{count}</b> proxies...\n\n{progress_bar(done, count)}",
+                parse_mode="HTML",
             )
         except Exception:
             pass
@@ -155,16 +163,16 @@ async def _run_check(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_tex
         db.record_proxy_check(user.id, total)
 
     summary = (
-        "✅ **Check Complete**\n\n"
-        f"**Total:** {len(results)}\n"
-        f"**Live:** {len(live)} ✅\n"
-        f"**Dead:** {len(dead)} ❌"
+        "✅ <b>Check Complete</b>\n\n"
+        f"<b>Total:</b> {len(results)}\n"
+        f"<b>Live:</b> {len(live)} ✅\n"
+        f"<b>Dead:</b> {len(dead)} ❌"
     )
     await status_msg.edit_text(
         f"{summary}\n\n{progress_bar(len(results), len(results))}",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
-    await message.reply_text(summary, parse_mode="Markdown")
+    await message.reply_text(summary, parse_mode="HTML")
 
     if live:
         live_file = InputFile(
@@ -207,7 +215,9 @@ async def receive_proxies_to_check(update: Update, context: ContextTypes.DEFAULT
 
 
 def register_checker_handlers(application) -> None:
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_CHECKER}$"), proxy_checker_start))
+    application.add_handler(
+        MessageHandler(filters.Text([BTN_CHECKER]), proxy_checker_start)
+    )
     application.add_handler(CallbackQueryHandler(checker_cancel, pattern=r"^checker:cancel$"))
     application.add_handler(
         MessageHandler(
