@@ -46,7 +46,7 @@ async def proxy_checker_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not update.message or not await ensure_access(update, context):
         return
 
-    clear_input_modes(context)
+    context.user_data.pop(WAITING_CUSTOM_QTY, None)
     context.user_data[WAITING_PROXY_CHECK] = True
     await update.message.reply_text(
         _checker_intro(_daily_limit(context)),
@@ -192,9 +192,13 @@ def _is_proxy_check_input(update: Update) -> bool:
     return False
 
 
-async def receive_proxies_to_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _waiting_proxy_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if not context.user_data.get(WAITING_PROXY_CHECK):
-        return
+        return False
+    return _is_proxy_check_input(update)
+
+
+async def receive_proxies_to_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not await ensure_access(update, context):
         return
 
@@ -209,7 +213,7 @@ def register_checker_handlers(application) -> None:
     application.add_handler(CallbackQueryHandler(checker_cancel, pattern=r"^checker:cancel$"))
     application.add_handler(
         MessageHandler(
-            filters.create(_is_proxy_check_input) & ~filters.COMMAND,
+            filters.create(_waiting_proxy_input) & ~filters.COMMAND,
             receive_proxies_to_check,
         ),
         group=2,
