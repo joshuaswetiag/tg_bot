@@ -241,13 +241,13 @@ async def show_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 ADD_ACCOUNTS_HELP = (
     "➕ <b>Add Proxy Accounts</b>\n\n"
-    "Upload an <code>.xlsx</code> file or send accounts as text.\n\n"
-    "<b>Excel format:</b>\n"
-    "• Column B = email\n"
-    "• Column C = password\n\n"
-    "<b>Text format:</b>\n"
-    "• One <code>email:password</code> per line\n\n"
-    "You can also use <code>/add_accounts</code>."
+    "Upload your <code>.xlsx</code> Excel file here.\n\n"
+    "<b>Excel columns:</b>\n"
+    "• <b>Column B</b> = email\n"
+    "• <b>Column C</b> = password\n\n"
+    "<b>Or send text:</b>\n"
+    "• <code>email@example.com:password</code> (one per line)\n\n"
+    "Commands: <code>/add_accounts</code> or <code>/add_proxies</code>"
 )
 
 
