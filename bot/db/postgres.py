@@ -353,7 +353,7 @@ class PostgresDatabase:
                     (user_id,),
                 )
                 row = cur.fetchone()
-                return int(row[0])
+                return int(row["count"])
 
     def record_proxy_check(self, user_id: int, proxy_count: int) -> None:
         with self._conn() as conn:
