@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 
 from telegram import Bot, ReplyKeyboardMarkup, ReplyKeyboardRemove
@@ -17,6 +18,14 @@ BACK_ONLINE_NOTICE = (
     "Maintenance is complete, and you can now purchase proxies.\n\n"
     "Use the menu below to get started."
 )
+
+BROADCAST_HEADER = "📢 Broadcast"
+NOTICE_HEADER = "📣 Notice"
+
+
+def format_announcement(kind: str, body: str) -> str:
+    header = NOTICE_HEADER if kind == "notice" else BROADCAST_HEADER
+    return f"<b>{header}</b>\n\n{html.escape(body.strip())}"
 
 
 async def broadcast_message(

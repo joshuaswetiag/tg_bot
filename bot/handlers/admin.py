@@ -10,13 +10,19 @@ from bot.keyboards import (
     admin_panel_keyboard,
     order_admin_keyboard,
 )
-from bot.utils.broadcast import BACK_ONLINE_NOTICE, MAINTENANCE_NOTICE, broadcast_message
+from bot.utils.broadcast import (
+    BACK_ONLINE_NOTICE,
+    MAINTENANCE_NOTICE,
+    broadcast_message,
+    format_announcement,
+)
 from bot.utils.order_messages import (
     order_delivered,
     order_proxy_caption,
     order_proxy_filename,
 )
 from bot.utils.user_state import (
+    ADMIN_BROADCAST_TYPE,
     WAITING_ADMIN_BROADCAST,
     WAITING_ADMIN_PROXIES,
     clear_admin_modes,
@@ -93,15 +99,19 @@ async def _disable_maintenance(context: ContextTypes.DEFAULT_TYPE) -> tuple[int,
     )
 
 
-async def _run_broadcast(context: ContextTypes.DEFAULT_TYPE, text: str) -> tuple[int, int, int]:
+async def _run_broadcast(
+    context: ContextTypes.DEFAULT_TYPE, text: str, *, kind: str = "broadcast"
+) -> tuple[int, int, int]:
     db: Database = context.bot_data["db"]
     settings = context.bot_data["settings"]
     user_ids = db.get_all_user_ids()
+    message = format_announcement(kind, text)
     sent, failed = await broadcast_message(
         context.bot,
         user_ids,
-        text,
-        parse_mode=None,
+        message,
+        parse_mode="HTML",
+        reply_markup=MAIN_KEYBOARD,
         exclude_ids=set(settings.admin_ids),
     )
     return sent, failed, len(user_ids)
@@ -129,7 +139,9 @@ async def maintenance_off(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
 
 
-async def broadcast_notice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def broadcast_notice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, kind: str = "broadcast"
+) -> None:
     if not update.message or not _is_admin(update, context):
         return
 
@@ -141,12 +153,15 @@ async def broadcast_notice(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if not text:
         context.user_data[WAITING_ADMIN_BROADCAST] = True
+        context.user_data[ADMIN_BROADCAST_TYPE] = kind
+        icon = "📣" if kind == "notice" else "📢"
+        label = "Notice" if kind == "notice" else "Broadcast"
         await update.message.reply_text(
-            "📢 <b>Broadcast Mode</b>\n\n"
+            f"{icon} <b>{label} Mode</b>\n\n"
             "Send the message you want to deliver to all users.\n\n"
             "You can also use:\n"
-            "• <code>/broadcast Your message</code>\n"
-            "• Reply to a message with <code>/broadcast</code>",
+            f"• <code>/{kind} Your message</code>\n"
+            f"• Reply to a message with <code>/{kind}</code>",
             parse_mode="HTML",
             reply_markup=ADMIN_CANCEL_KEYBOARD,
         )
@@ -157,13 +172,22 @@ async def broadcast_notice(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("No users in database yet.")
         return
 
+    icon = "📣" if kind == "notice" else "📢"
     status = await update.message.reply_text(
-        f"📢 Broadcasting to {user_ids_total} user(s)..."
+        f"{icon} Sending {kind} to {user_ids_total} user(s)..."
     )
-    sent, failed, _ = await _run_broadcast(context, text)
+    sent, failed, _ = await _run_broadcast(context, text, kind=kind)
     await status.edit_text(
-        f"📢 Broadcast complete.\nSent: {sent}\nFailed: {failed}"
+        f"{icon} {kind.title()} complete.\nSent: {sent}\nFailed: {failed}"
     )
+
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await broadcast_notice(update, context, kind="broadcast")
+
+
+async def notice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await broadcast_notice(update, context, kind="notice")
 
 
 async def show_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -290,9 +314,11 @@ async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if action in ("broadcast", "notice"):
         clear_admin_modes(context)
         context.user_data[WAITING_ADMIN_BROADCAST] = True
-        label = "Broadcast" if action == "broadcast" else "Notice"
+        context.user_data[ADMIN_BROADCAST_TYPE] = action
+        icon = "📣" if action == "notice" else "📢"
+        label = "Notice" if action == "notice" else "Broadcast"
         await query.message.reply_text(
-            f"📢 <b>{label} Mode</b>\n\n"
+            f"{icon} <b>{label} Mode</b>\n\n"
             "Send the message you want to deliver to all users.",
             parse_mode="HTML",
             reply_markup=ADMIN_CANCEL_KEYBOARD,
@@ -336,18 +362,20 @@ async def receive_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_
         clear_admin_modes(context)
         return
 
+    kind = context.user_data.pop(ADMIN_BROADCAST_TYPE, "broadcast")
     clear_admin_modes(context)
     user_ids_total = len(context.bot_data["db"].get_all_user_ids())
     if not user_ids_total:
         await update.message.reply_text("No users in database yet.")
         return
 
+    icon = "📣" if kind == "notice" else "📢"
     status = await update.message.reply_text(
-        f"📢 Broadcasting to {user_ids_total} user(s)..."
+        f"{icon} Sending {kind} to {user_ids_total} user(s)..."
     )
-    sent, failed, _ = await _run_broadcast(context, text)
+    sent, failed, _ = await _run_broadcast(context, text, kind=kind)
     await status.edit_text(
-        f"📢 Broadcast complete.\nSent: {sent}\nFailed: {failed}"
+        f"{icon} {kind.title()} complete.\nSent: {sent}\nFailed: {failed}"
     )
 
 
@@ -445,8 +473,8 @@ def register_admin_handlers(application) -> None:
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("maintenance_on", maintenance_on))
     application.add_handler(CommandHandler("maintenance_off", maintenance_off))
-    application.add_handler(CommandHandler("broadcast", broadcast_notice))
-    application.add_handler(CommandHandler("notice", broadcast_notice))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
+    application.add_handler(CommandHandler("notice", notice_command))
     application.add_handler(CommandHandler("stock", show_stock))
     application.add_handler(CommandHandler("pending", show_pending))
     application.add_handler(CommandHandler("add_proxies", add_proxies_command))
