@@ -14,6 +14,7 @@ class ProxyPack:
 
 
 PROXY_PACKS: list[ProxyPack] = [
+    ProxyPack("test", "Test Pack", 1, 10),
     ProxyPack("starter", "Starter Pack", 50, 100),
     ProxyPack("basic", "Basic Pack", 100, 200),
     ProxyPack("standard", "Standard Pack", 250, 500),
