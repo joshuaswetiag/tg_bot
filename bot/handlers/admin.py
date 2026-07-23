@@ -4,11 +4,22 @@ from telegram import InputFile, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.database import Database
+from bot.keyboards import (
+    ADMIN_CANCEL_KEYBOARD,
+    admin_panel_keyboard,
+    order_admin_keyboard,
+)
 from bot.utils.broadcast import BACK_ONLINE_NOTICE, MAINTENANCE_NOTICE, broadcast_message
 from bot.utils.order_messages import (
     order_delivered,
     order_proxy_caption,
     order_proxy_filename,
+)
+from bot.utils.user_state import (
+    WAITING_ADMIN_BROADCAST,
+    WAITING_ADMIN_PROXIES,
+    clear_admin_modes,
+    is_menu_button,
 )
 
 
@@ -19,45 +30,84 @@ def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return user.id in context.bot_data["settings"].admin_ids
 
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not _is_admin(update, context):
-        return
-
-    db: Database = context.bot_data["db"]
+def _admin_panel_text(db: Database) -> str:
     maintenance = db.is_maintenance()
     stock = db.count_available_proxies()
     pending = len(db.get_pending_orders())
-
-    await update.message.reply_text(
-        "🛠 **Admin Panel**\n\n"
-        f"Maintenance: {'ON' if maintenance else 'OFF'}\n"
-        f"Proxy stock: {stock}\n"
-        f"Pending orders: {pending}\n\n"
-        "**Commands:**\n"
-        "`/maintenance_on` — Enable maintenance + notify all users\n"
-        "`/maintenance_off` — Disable maintenance + notify all users\n"
-        "`/broadcast <message>` — Send notice to all users\n"
-        "`/add_proxies` — Reply to a message with proxy list\n"
-        "`/stock` — Show available stock\n"
-        "`/pending` — List pending orders",
-        parse_mode="Markdown",
+    return (
+        "<b>🛠 Admin Panel</b>\n\n"
+        f"Maintenance: <b>{'ON ⚠️' if maintenance else 'OFF ✅'}</b>\n"
+        f"Proxy stock: <b>{stock}</b>\n"
+        f"Pending orders: <b>{pending}</b>\n\n"
+        "Use the buttons below to manage the bot."
     )
+
+
+async def _send_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    db: Database = context.bot_data["db"]
+    text = _admin_panel_text(db)
+    markup = admin_panel_keyboard()
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text, reply_markup=markup, parse_mode="HTML"
+        )
+        return
+
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(text, reply_markup=markup, parse_mode="HTML")
+
+
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    clear_admin_modes(context)
+    await _send_admin_panel(update, context)
+
+
+async def _enable_maintenance(context: ContextTypes.DEFAULT_TYPE) -> tuple[int, int]:
+    db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
+    db.set_maintenance(True)
+    return await broadcast_message(
+        context.bot,
+        db.get_all_user_ids(),
+        MAINTENANCE_NOTICE,
+        exclude_ids=set(settings.admin_ids),
+    )
+
+
+async def _disable_maintenance(context: ContextTypes.DEFAULT_TYPE) -> tuple[int, int]:
+    db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
+    db.set_maintenance(False)
+    return await broadcast_message(
+        context.bot,
+        db.get_all_user_ids(),
+        BACK_ONLINE_NOTICE,
+        exclude_ids=set(settings.admin_ids),
+    )
+
+
+async def _run_broadcast(context: ContextTypes.DEFAULT_TYPE, text: str) -> tuple[int, int, int]:
+    db: Database = context.bot_data["db"]
+    settings = context.bot_data["settings"]
+    user_ids = db.get_all_user_ids()
+    sent, failed = await broadcast_message(
+        context.bot,
+        user_ids,
+        text,
+        parse_mode=None,
+        exclude_ids=set(settings.admin_ids),
+    )
+    return sent, failed, len(user_ids)
 
 
 async def maintenance_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
-    db: Database = context.bot_data["db"]
-    settings = context.bot_data["settings"]
-    db.set_maintenance(True)
-
-    user_ids = db.get_all_user_ids()
-    sent, failed = await broadcast_message(
-        context.bot,
-        user_ids,
-        MAINTENANCE_NOTICE,
-        exclude_ids=set(settings.admin_ids),
-    )
+    sent, failed = await _enable_maintenance(context)
     await update.message.reply_text(
         f"⚠️ Maintenance mode enabled.\n"
         f"Notice sent to {sent} user(s)."
@@ -68,17 +118,7 @@ async def maintenance_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def maintenance_off(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
-    db: Database = context.bot_data["db"]
-    settings = context.bot_data["settings"]
-    db.set_maintenance(False)
-
-    user_ids = db.get_all_user_ids()
-    sent, failed = await broadcast_message(
-        context.bot,
-        user_ids,
-        BACK_ONLINE_NOTICE,
-        exclude_ids=set(settings.admin_ids),
-    )
+    sent, failed = await _disable_maintenance(context)
     await update.message.reply_text(
         f"🎉 Maintenance mode disabled.\n"
         f"Back-online notice sent to {sent} user(s)."
@@ -97,36 +137,29 @@ async def broadcast_notice(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         text = " ".join(context.args).strip()
 
     if not text:
+        context.user_data[WAITING_ADMIN_BROADCAST] = True
         await update.message.reply_text(
-            "Send a notice to all bot users.\n\n"
-            "<b>Usage:</b>\n"
-            "• <code>/broadcast Your message here</code>\n"
-            "• Reply to any message with <code>/broadcast</code>",
+            "📢 <b>Broadcast Mode</b>\n\n"
+            "Send the message you want to deliver to all users.\n\n"
+            "You can also use:\n"
+            "• <code>/broadcast Your message</code>\n"
+            "• Reply to a message with <code>/broadcast</code>",
             parse_mode="HTML",
+            reply_markup=ADMIN_CANCEL_KEYBOARD,
         )
         return
 
-    db: Database = context.bot_data["db"]
-    settings = context.bot_data["settings"]
-    user_ids = db.get_all_user_ids()
-    if not user_ids:
+    user_ids_total = len(context.bot_data["db"].get_all_user_ids())
+    if not user_ids_total:
         await update.message.reply_text("No users in database yet.")
         return
 
     status = await update.message.reply_text(
-        f"📢 Broadcasting to {len(user_ids)} user(s)..."
+        f"📢 Broadcasting to {user_ids_total} user(s)..."
     )
-    sent, failed = await broadcast_message(
-        context.bot,
-        user_ids,
-        text,
-        parse_mode=None,
-        exclude_ids=set(settings.admin_ids),
-    )
+    sent, failed, _ = await _run_broadcast(context, text)
     await status.edit_text(
-        f"📢 Broadcast complete.\n"
-        f"Sent: {sent}\n"
-        f"Failed: {failed}"
+        f"📢 Broadcast complete.\nSent: {sent}\nFailed: {failed}"
     )
 
 
@@ -137,17 +170,18 @@ async def show_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(f"📦 Available proxies: {db.count_available_proxies()}")
 
 
-async def show_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not _is_admin(update, context):
-        return
+async def _send_pending_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Database = context.bot_data["db"]
     orders = db.get_pending_orders()
-    if not orders:
-        await update.message.reply_text("No pending orders.")
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    if not chat_id:
         return
 
-    from bot.keyboards import order_admin_keyboard
+    if not orders:
+        await context.bot.send_message(chat_id, "No pending orders.")
+        return
 
+    await context.bot.send_message(chat_id, f"📋 {len(orders)} pending order(s):")
     for order in orders:
         text = (
             f"Order #{order['id']}\n"
@@ -156,11 +190,18 @@ async def show_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             f"Amount: ৳{order['amount']:.1f}\n"
             f"TRX: `{order['trx_id']}`"
         )
-        await update.message.reply_text(
+        await context.bot.send_message(
+            chat_id,
             text,
             parse_mode="Markdown",
             reply_markup=order_admin_keyboard(order["id"]),
         )
+
+
+async def show_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    await _send_pending_orders(update, context)
 
 
 async def add_proxies_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -174,17 +215,163 @@ async def add_proxies_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         text = " ".join(context.args)
 
     if not text:
+        context.user_data[WAITING_ADMIN_PROXIES] = True
         await update.message.reply_text(
-            "Reply to a message containing proxies (one per line), or:\n"
-            "`/add_proxies host:port`",
-            parse_mode="Markdown",
+            "➕ <b>Add Proxies</b>\n\n"
+            "Send a proxy list (one per line) or upload a <code>.txt</code> file.\n\n"
+            "You can also reply to a proxy message with <code>/add_proxies</code>.",
+            parse_mode="HTML",
+            reply_markup=ADMIN_CANCEL_KEYBOARD,
         )
         return
 
+    await _add_proxies_from_text(update, context, text)
+
+
+async def _add_proxies_from_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> None:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     db: Database = context.bot_data["db"]
     added = db.add_proxies(lines)
-    await update.message.reply_text(f"Added {added} proxy(s). Total stock: {db.count_available_proxies()}")
+    clear_admin_modes(context)
+
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(
+            f"✅ Added {added} proxy(s).\n"
+            f"Total stock: {db.count_available_proxies()}"
+        )
+
+
+async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data or not _is_admin(update, context):
+        if query:
+            await query.answer("Admin only.", show_alert=True)
+        return
+
+    action = query.data.split(":", 1)[1]
+    await query.answer()
+
+    if action == "cancel":
+        clear_admin_modes(context)
+        await query.edit_message_text("Admin panel closed.")
+        return
+
+    if action == "refresh":
+        clear_admin_modes(context)
+        await _send_admin_panel(update, context)
+        return
+
+    if action == "maint_on":
+        sent, failed = await _enable_maintenance(context)
+        await query.message.reply_text(
+            f"⚠️ Maintenance mode enabled.\n"
+            f"Notice sent to {sent} user(s)."
+            + (f" ({failed} unreachable)" if failed else "")
+        )
+        await _send_admin_panel(update, context)
+        return
+
+    if action == "maint_off":
+        sent, failed = await _disable_maintenance(context)
+        await query.message.reply_text(
+            f"🎉 Maintenance mode disabled.\n"
+            f"Back-online notice sent to {sent} user(s)."
+            + (f" ({failed} unreachable)" if failed else "")
+        )
+        await _send_admin_panel(update, context)
+        return
+
+    if action in ("broadcast", "notice"):
+        clear_admin_modes(context)
+        context.user_data[WAITING_ADMIN_BROADCAST] = True
+        label = "Broadcast" if action == "broadcast" else "Notice"
+        await query.message.reply_text(
+            f"📢 <b>{label} Mode</b>\n\n"
+            "Send the message you want to deliver to all users.",
+            parse_mode="HTML",
+            reply_markup=ADMIN_CANCEL_KEYBOARD,
+        )
+        return
+
+    if action == "stock":
+        db: Database = context.bot_data["db"]
+        await query.message.reply_text(
+            f"📦 Available proxies: {db.count_available_proxies()}"
+        )
+        return
+
+    if action == "pending":
+        await _send_pending_orders(update, context)
+        return
+
+    if action == "add_proxies":
+        clear_admin_modes(context)
+        context.user_data[WAITING_ADMIN_PROXIES] = True
+        await query.message.reply_text(
+            "➕ <b>Add Proxies</b>\n\n"
+            "Send a proxy list (one per line) or upload a <code>.txt</code> file.",
+            parse_mode="HTML",
+            reply_markup=ADMIN_CANCEL_KEYBOARD,
+        )
+
+
+async def receive_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    if not context.user_data.get(WAITING_ADMIN_BROADCAST):
+        return
+    if not update.message.text:
+        return
+
+    text = update.message.text.strip()
+    if not text:
+        return
+    if is_menu_button(text):
+        clear_admin_modes(context)
+        return
+
+    clear_admin_modes(context)
+    user_ids_total = len(context.bot_data["db"].get_all_user_ids())
+    if not user_ids_total:
+        await update.message.reply_text("No users in database yet.")
+        return
+
+    status = await update.message.reply_text(
+        f"📢 Broadcasting to {user_ids_total} user(s)..."
+    )
+    sent, failed, _ = await _run_broadcast(context, text)
+    await status.edit_text(
+        f"📢 Broadcast complete.\nSent: {sent}\nFailed: {failed}"
+    )
+
+
+async def receive_admin_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    if not context.user_data.get(WAITING_ADMIN_PROXIES):
+        return
+
+    text = ""
+    if update.message.document:
+        doc = update.message.document
+        if doc.file_size and doc.file_size > 512_000:
+            await update.message.reply_text("File too large. Max size is 512 KB.")
+            return
+        file = await context.bot.get_file(doc.file_id)
+        data = await file.download_as_bytearray()
+        text = data.decode("utf-8", errors="ignore")
+    elif update.message.text:
+        text = update.message.text
+        if is_menu_button(text):
+            clear_admin_modes(context)
+            return
+    else:
+        return
+
+    await _add_proxies_from_text(update, context, text)
 
 
 async def admin_order_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -260,4 +447,19 @@ def register_admin_handlers(application) -> None:
     application.add_handler(CommandHandler("stock", show_stock))
     application.add_handler(CommandHandler("pending", show_pending))
     application.add_handler(CommandHandler("add_proxies", add_proxies_command))
+    application.add_handler(CallbackQueryHandler(admin_panel_action, pattern=r"^adminpanel:"))
     application.add_handler(CallbackQueryHandler(admin_order_action, pattern=r"^admin:"))
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            receive_admin_broadcast,
+        ),
+        group=0,
+    )
+    application.add_handler(
+        MessageHandler(
+            (filters.TEXT | filters.Document.ALL) & ~filters.COMMAND,
+            receive_admin_proxies,
+        ),
+        group=0,
+    )
