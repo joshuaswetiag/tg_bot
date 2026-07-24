@@ -74,6 +74,9 @@ ADMIN_STOCK_REPLACE = "adminpanel:stock_replace"
 ADMIN_ADD_PROXIES = "adminpanel:add_proxies"
 ADMIN_REFRESH = "adminpanel:refresh"
 ADMIN_CANCEL = "adminpanel:cancel"
+ADMIN_STATS = "adminpanel:stats"
+ADMIN_ORDERS_EXPORT = "adminpanel:orders_export"
+ADMIN_USERS_EXPORT = "adminpanel:users_export"
 
 
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
@@ -93,9 +96,14 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📦 Stock", callback_data=ADMIN_STOCK),
             ],
             [
-                InlineKeyboardButton("➕ Add Accounts", callback_data=ADMIN_ADD_PROXIES),
-                InlineKeyboardButton("🔄 Refresh", callback_data=ADMIN_REFRESH),
+                InlineKeyboardButton("📊 Stats", callback_data=ADMIN_STATS),
+                InlineKeyboardButton("📥 Export Orders", callback_data=ADMIN_ORDERS_EXPORT),
             ],
+            [
+                InlineKeyboardButton("👥 Export Users", callback_data=ADMIN_USERS_EXPORT),
+                InlineKeyboardButton("➕ Add Accounts", callback_data=ADMIN_ADD_PROXIES),
+            ],
+            [InlineKeyboardButton("🔄 Refresh", callback_data=ADMIN_REFRESH)],
             [InlineKeyboardButton("❌ Close", callback_data=ADMIN_CANCEL)],
         ]
     )

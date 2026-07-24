@@ -403,6 +403,77 @@ class PostgresDatabase:
                     "total_proxies": int(row["total_proxies"]),
                 }
 
+    def count_users(self) -> int:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) AS count FROM users")
+                row = cur.fetchone()
+                return int(row["count"])
+
+    def get_store_stats(self) -> dict[str, Any]:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        (SELECT COUNT(*) FROM users) AS total_users,
+                        COUNT(*) AS total_orders,
+                        COUNT(*) FILTER (WHERE status = 'pending_review') AS pending_orders,
+                        COUNT(*) FILTER (WHERE status = 'completed') AS completed_orders,
+                        COALESCE(SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END), 0) AS revenue_bdt,
+                        COALESCE(SUM(CASE WHEN status = 'completed' THEN proxy_count ELSE 0 END), 0) AS accounts_sold
+                    FROM orders
+                    """
+                )
+                row = cur.fetchone()
+                return {
+                    "total_users": int(row["total_users"]),
+                    "total_orders": int(row["total_orders"]),
+                    "pending_orders": int(row["pending_orders"]),
+                    "completed_orders": int(row["completed_orders"]),
+                    "revenue_bdt": float(row["revenue_bdt"]),
+                    "accounts_sold": int(row["accounts_sold"]),
+                }
+
+    def get_recent_orders(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT o.*, u.username, u.first_name
+                    FROM orders o
+                    JOIN users u ON u.user_id = o.user_id
+                    ORDER BY o.created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [self._row_to_dict(r) for r in cur.fetchall()]
+
+    def list_users_with_order_stats(self, limit: int = 500) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        u.user_id,
+                        u.username,
+                        u.first_name,
+                        u.created_at,
+                        COUNT(o.id) AS total_orders,
+                        COUNT(o.id) FILTER (WHERE o.status = 'completed') AS completed_orders,
+                        COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.amount ELSE 0 END), 0) AS spent_bdt,
+                        COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.proxy_count ELSE 0 END), 0) AS accounts_bought
+                    FROM users u
+                    LEFT JOIN orders o ON o.user_id = u.user_id
+                    GROUP BY u.user_id, u.username, u.first_name, u.created_at
+                    ORDER BY u.created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [self._row_to_dict(r) for r in cur.fetchall()]
+
     def count_proxy_checks_24h(self, user_id: int) -> int:
         with self._conn() as conn:
             with conn.cursor() as cur:

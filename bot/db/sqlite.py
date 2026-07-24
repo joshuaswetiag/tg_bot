@@ -354,6 +354,71 @@ class SqliteDatabase:
                 "total_proxies": int(row["total_proxies"]),
             }
 
+    def count_users(self) -> int:
+        with self._conn() as conn:
+            row = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()
+            return int(row["c"])
+
+    def get_store_stats(self) -> dict[str, Any]:
+        with self._conn() as conn:
+            users_row = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()
+            orders_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_orders,
+                    SUM(CASE WHEN status = 'pending_review' THEN 1 ELSE 0 END) AS pending_orders,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
+                    COALESCE(SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END), 0) AS revenue_bdt,
+                    COALESCE(SUM(CASE WHEN status = 'completed' THEN proxy_count ELSE 0 END), 0) AS accounts_sold
+                FROM orders
+                """
+            ).fetchone()
+            return {
+                "total_users": int(users_row["c"]),
+                "total_orders": int(orders_row["total_orders"]),
+                "pending_orders": int(orders_row["pending_orders"]),
+                "completed_orders": int(orders_row["completed_orders"]),
+                "revenue_bdt": float(orders_row["revenue_bdt"]),
+                "accounts_sold": int(orders_row["accounts_sold"]),
+            }
+
+    def get_recent_orders(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT o.*, u.username, u.first_name
+                FROM orders o
+                JOIN users u ON u.user_id = o.user_id
+                ORDER BY o.created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_users_with_order_stats(self, limit: int = 500) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    u.user_id,
+                    u.username,
+                    u.first_name,
+                    u.created_at,
+                    COUNT(o.id) AS total_orders,
+                    SUM(CASE WHEN o.status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
+                    COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.amount ELSE 0 END), 0) AS spent_bdt,
+                    COALESCE(SUM(CASE WHEN o.status = 'completed' THEN o.proxy_count ELSE 0 END), 0) AS accounts_bought
+                FROM users u
+                LEFT JOIN orders o ON o.user_id = u.user_id
+                GROUP BY u.user_id
+                ORDER BY u.created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def count_proxy_checks_24h(self, user_id: int) -> int:
         with self._conn() as conn:
             row = conn.execute(

@@ -21,6 +21,12 @@ from bot.utils.account_stock import (
     parse_accounts_from_text,
     parse_accounts_upload,
 )
+from bot.utils.admin_reports import (
+    export_orders_csv,
+    export_users_csv,
+    format_order_summary_lines,
+    format_store_stats_message,
+)
 from bot.utils.broadcast import (
     BACK_ONLINE_NOTICE,
     MAINTENANCE_NOTICE,
@@ -52,12 +58,13 @@ def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 def _admin_panel_text(db: Database) -> str:
     maintenance = db.is_maintenance()
     stock = db.count_available_proxies()
-    pending = len(db.get_pending_orders())
+    stats = db.get_store_stats()
     return (
         "<b>🛠 Admin Panel</b>\n\n"
         f"Maintenance: <b>{'ON ⚠️' if maintenance else 'OFF ✅'}</b>\n"
         f"Account stock: <b>{stock}</b>\n"
-        f"Pending orders: <b>{pending}</b>\n\n"
+        f"Users: <b>{stats['total_users']}</b> · Orders: <b>{stats['total_orders']}</b>\n"
+        f"Pending: <b>{stats['pending_orders']}</b> · Revenue: <b>৳{stats['revenue_bdt']:.1f}</b>\n\n"
         "Use the buttons below to manage the bot."
     )
 
@@ -347,7 +354,95 @@ async def stock_replace_command(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-async def _send_pending_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    db: Database = context.bot_data["db"]
+    stats = db.get_store_stats()
+    orders = db.get_recent_orders(limit=10)
+    text = format_store_stats_message(stats)
+    if orders:
+        text += "\n\n" + format_order_summary_lines(orders, limit=5)
+    await update.message.reply_text(text, parse_mode="HTML")
+
+
+async def user_orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "Show all orders for one user.\n\nUsage: <code>/user_orders 123456789</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    user_id = int(context.args[0])
+    db: Database = context.bot_data["db"]
+    user = db.get_user(user_id)
+    orders = db.get_user_orders(user_id, limit=50)
+    if not user:
+        await update.message.reply_text("User not found.")
+        return
+    if not orders:
+        await update.message.reply_text(
+            f"No orders for {user.get('first_name')} (`{user_id}`).",
+            parse_mode="Markdown",
+        )
+        return
+
+    uname = f"@{user['username']}" if user.get("username") else f"id {user_id}"
+    lines = [
+        f"<b>👤 {user.get('first_name')}</b> ({uname})\n",
+        f"Telegram ID: <code>{user_id}</code>\n",
+    ]
+    for o in orders:
+        lines.append(
+            f"<b>#{o['id']}</b> {o['pack_name']} · {o['proxy_count']} acct · "
+            f"৳{float(o['amount']):.0f} · {o['status']}\n"
+            f"TRX: <code>{o.get('trx_id') or '—'}</code>"
+        )
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def _export_orders_file(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    db: Database = context.bot_data["db"]
+    orders = db.get_recent_orders(limit=2000)
+    if not orders:
+        await context.bot.send_message(chat_id, "No orders yet.")
+        return
+    content = export_orders_csv(orders)
+    await context.bot.send_document(
+        chat_id,
+        InputFile(
+            io.BytesIO(content.encode("utf-8")),
+            filename="all_orders.csv",
+        ),
+        caption=f"📋 {len(orders)} order(s)",
+    )
+
+
+async def _export_users_file(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    db: Database = context.bot_data["db"]
+    users = db.list_users_with_order_stats(limit=5000)
+    if not users:
+        await context.bot.send_message(chat_id, "No users yet.")
+        return
+    content = export_users_csv(users)
+    await context.bot.send_document(
+        chat_id,
+        InputFile(
+            io.BytesIO(content.encode("utf-8")),
+            filename="all_users.csv",
+        ),
+        caption=f"👥 {len(users)} user(s)",
+    )
+
+
+async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not _is_admin(update, context):
+        return
+    await stats_command(update, context)
+
     db: Database = context.bot_data["db"]
     orders = db.get_pending_orders()
     chat_id = update.effective_chat.id if update.effective_chat else None
@@ -571,6 +666,28 @@ async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
+    if action == "stats":
+        db: Database = context.bot_data["db"]
+        stats = db.get_store_stats()
+        orders = db.get_recent_orders(limit=10)
+        text = format_store_stats_message(stats)
+        if orders:
+            text += "\n\n" + format_order_summary_lines(orders, limit=5)
+        await query.message.reply_text(text, parse_mode="HTML")
+        return
+
+    if action == "orders_export":
+        chat_id = query.message.chat_id if query.message else None
+        if chat_id:
+            await _export_orders_file(context, chat_id)
+        return
+
+    if action == "users_export":
+        chat_id = query.message.chat_id if query.message else None
+        if chat_id:
+            await _export_users_file(context, chat_id)
+        return
+
     if action == "pending":
         await _send_pending_orders(update, context)
         return
@@ -739,6 +856,8 @@ def register_admin_handlers(application) -> None:
     application.add_handler(CommandHandler("stock_delete", stock_delete_command))
     application.add_handler(CommandHandler("stock_edit", stock_edit_command))
     application.add_handler(CommandHandler("stock_replace", stock_replace_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("user_orders", user_orders_command))
     application.add_handler(CommandHandler("pending", show_pending))
     application.add_handler(CommandHandler("add_proxies", add_proxies_command))
     application.add_handler(CommandHandler("add_accounts", add_proxies_command))
