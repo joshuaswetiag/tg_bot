@@ -186,9 +186,11 @@ class SqliteDatabase:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT o.*, u.username, u.first_name
+                SELECT o.*,
+                       COALESCE(u.username, '') AS username,
+                       COALESCE(u.first_name, 'User') AS first_name
                 FROM orders o
-                JOIN users u ON u.user_id = o.user_id
+                LEFT JOIN users u ON u.user_id = o.user_id
                 WHERE o.status = 'pending_review'
                 ORDER BY o.created_at ASC
                 """

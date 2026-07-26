@@ -21,6 +21,7 @@ from bot.utils.account_stock import (
     parse_accounts_from_text,
     parse_accounts_upload,
 )
+from bot.utils.admin_notify import format_pending_order_message
 from bot.utils.admin_reports import (
     export_orders_csv,
     export_users_csv,
@@ -43,6 +44,7 @@ from bot.utils.user_state import (
     WAITING_ADMIN_BROADCAST,
     WAITING_ADMIN_PROXIES,
     WAITING_ADMIN_STOCK_REPLACE,
+    WAITING_TRX,
     clear_admin_modes,
     is_menu_button,
 )
@@ -443,9 +445,19 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     await stats_command(update, context)
 
+
+def _admin_chat_id(update: Update) -> int | None:
+    if update.callback_query and update.callback_query.message:
+        return update.callback_query.message.chat_id
+    if update.effective_chat:
+        return update.effective_chat.id
+    return None
+
+
+async def _send_pending_orders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db: Database = context.bot_data["db"]
     orders = db.get_pending_orders()
-    chat_id = update.effective_chat.id if update.effective_chat else None
+    chat_id = _admin_chat_id(update)
     if not chat_id:
         return
 
@@ -453,19 +465,14 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await context.bot.send_message(chat_id, "No pending orders.")
         return
 
-    await context.bot.send_message(chat_id, f"📋 {len(orders)} pending order(s):")
+    await context.bot.send_message(
+        chat_id, f"📋 {len(orders)} pending order(s) — tap Approve or Reject:"
+    )
     for order in orders:
-        text = (
-            f"Order #{order['id']}\n"
-            f"User: {order['first_name']} (@{order['username'] or 'n/a'}) `{order['user_id']}`\n"
-            f"Pack: {order['pack_name']} ({account_count_label(int(order['proxy_count']))})\n"
-            f"Amount: ৳{order['amount']:.1f}\n"
-            f"TRX: `{order['trx_id']}`"
-        )
         await context.bot.send_message(
             chat_id,
-            text,
-            parse_mode="Markdown",
+            format_pending_order_message(order),
+            parse_mode="HTML",
             reply_markup=order_admin_keyboard(order["id"]),
         )
 
@@ -705,6 +712,8 @@ async def admin_panel_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def receive_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
         return
+    if context.user_data.get(WAITING_TRX):
+        return
     if not context.user_data.get(WAITING_ADMIN_BROADCAST):
         return
     if not update.message.text:
@@ -736,6 +745,8 @@ async def receive_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_
 
 async def receive_admin_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not _is_admin(update, context):
+        return
+    if context.user_data.get(WAITING_TRX):
         return
 
     if context.user_data.get(WAITING_ADMIN_STOCK_REPLACE):

@@ -57,6 +57,7 @@ async def _start_pack_order(
     if not user:
         return
 
+    db.upsert_user(user.id, user.username, user.first_name)
     available = db.count_available_proxies()
     if available < pack.count:
         msg = update.effective_message
@@ -121,6 +122,7 @@ async def pack_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not user:
         return
 
+    db.upsert_user(user.id, user.username, user.first_name)
     available = db.count_available_proxies()
     if available < pack.count:
         await query.edit_message_text(
@@ -244,27 +246,20 @@ async def receive_trx_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode="HTML",
     )
 
-    from bot.keyboards import order_admin_keyboard
+    from bot.utils.admin_notify import notify_admins_new_order
 
-    admin_text = (
-        f"🆕 **New Payment**\n\n"
-        f"Order: #{order_id}\n"
-        f"User: {user.first_name} (@{user.username or 'n/a'}) `{user.id}`\n"
-        f"Pack: {order['pack_name']} ({account_count_label(int(order['proxy_count']))})\n"
-        f"Amount: ৳{order['amount']:.1f}\n"
-        f"Method: {payment_method.upper()}\n"
-        f"TRX ID: `{trx_id}`"
+    await notify_admins_new_order(
+        context,
+        order_id=order_id,
+        user_id=user.id,
+        first_name=user.first_name or "User",
+        username=user.username,
+        pack_name=order["pack_name"],
+        proxy_count=int(order["proxy_count"]),
+        amount=float(order["amount"]),
+        payment_method=payment_method,
+        trx_id=trx_id,
     )
-    for admin_id in settings.admin_ids:
-        try:
-            await context.bot.send_message(
-                admin_id,
-                admin_text,
-                parse_mode="Markdown",
-                reply_markup=order_admin_keyboard(order_id),
-            )
-        except Exception:
-            pass
 
 
 def register_buy_handlers(application) -> None:
