@@ -14,18 +14,18 @@ class ProxyPack:
 
 
 PROXY_PACKS: list[ProxyPack] = [
-    ProxyPack("starter", "Starter Pack", 50, 100),
-    ProxyPack("basic", "Basic Pack", 100, 200),
-    ProxyPack("standard", "Standard Pack", 250, 500),
-    ProxyPack("pro", "Pro Pack", 500, 1000),
-    ProxyPack("business", "Business Pack", 1000, 2000),
+    ProxyPack("starter", "Starter Pack", 50, 150),
+    ProxyPack("basic", "Basic Pack", 100, 300),
+    ProxyPack("standard", "Standard Pack", 250, 750),
+    ProxyPack("pro", "Pro Pack", 500, 1500),
+    ProxyPack("business", "Business Pack", 1000, 3000),
 ]
 
 PACK_BY_ID = {p.id: p for p in PROXY_PACKS}
 
 CUSTOM_ORDER_MIN = 50
 CUSTOM_ORDER_MAX = 5000
-CUSTOM_PRICE_PER_PROXY = 2.0
+CUSTOM_PRICE_PER_PROXY = 3.0
 
 
 @dataclass
